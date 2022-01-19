@@ -1,0 +1,43 @@
+""" 
+This pipline runs the Measle SSPE project analysis.
+
+Author: Will Hannon – https://www.linkedin.com/in/williamhannon/
+"""
+
+#### ----------------------- Imports ----------------------- ####
+
+import pandas as pd 
+from os.path import join
+from snakemake.utils import min_version
+
+min_version('6.0')  # require `snakemake` >= 6.0
+
+#### -------------------- Configuration -------------------- ####
+
+configfile: "config/config.yml"
+
+#### ------------------------ Utils ------------------------ ####
+
+# include: "rules/common.smk"
+
+#### ----------------------- Targets ----------------------- ####
+samples = list(set(pd.read_csv(config['samples']['file'])['Run']))
+
+rule all:
+    input: 
+        expand(join(config['fastq_dir'], "{accession}", "{accession}.fastq.gz"), accession = samples)
+
+      
+rule clean:
+    shell:
+        """
+        rm -rf logs/
+        rm -rf tmp/
+        rm -f slurm*.out
+        """
+
+#### ------------------------ Rules ------------------------ ####
+
+include: "rules/download-fastq.smk"
+
+
