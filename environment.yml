@@ -1,0 +1,13 @@
+name: MeV
+
+channels:
+  - bioconda
+  - conda-forge
+
+dependencies:
+  - mamba
+  - python
+  - pandas
+  - snakemake-minimal
+  
+
