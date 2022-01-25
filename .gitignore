@@ -133,3 +133,4 @@ results/
 tmp/
 **/tools
 **.DS_Store
+*.snakemake
