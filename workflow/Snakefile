@@ -25,7 +25,7 @@ samples = list(set(pd.read_csv(config['samples']['file'])['Run']))
 
 rule all:
     input: 
-        expand(join(config['fastq_dir'], "{accession}", "{accession}.fastq.gz"), accession = samples)
+        expand(join(config['align_dir'], "{accession}", "{accession}.sorted.bam"), accession = samples)
 
       
 rule clean:
@@ -38,6 +38,6 @@ rule clean:
 
 #### ------------------------ Rules ------------------------ ####
 
-include: "rules/download-fastq.smk"
-
-
+include: "rules/preprocessing.smk"
+include: "rules/format-reference.smk"
+include: "rules/align-reads.smk"

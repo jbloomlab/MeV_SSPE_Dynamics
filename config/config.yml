@@ -1,0 +1,72 @@
+#### ============ viral-deepseq configuration file ============ ####
+#                                                                  #
+# This file contains the tunable parameters for the viral-deepseq  #
+# pipeline.                                                        #
+#                                                                  #
+#### -------------------------- Util -------------------------- ####
+
+varscan: https://github.com/dkoboldt/varscan/raw/master/VarScan.v2.4.0.jar
+snpeff: http://sourceforge.net/projects/snpeff/files/snpEff_latest_core.zip
+
+#### ------------------------- Samples ------------------------ ####
+
+samples: 
+  file: config/samples.csv
+
+#### ------------------------ Genomes ----------------------- ####
+# Put viral and host genome ftp download locations here.         #
+# organism:                                                      #
+#   reference sequence: ftp://                                   #
+#   gtf annotations: ftp://                                      #
+#   contig: `only if the sequence is viral give it's contig`     #
+#### -------------------------------------------------------- ####
+
+# Custom reference for measles virus genome with mutation of circulating D-strains
+MeVChiTok:
+  location: local
+  ref: config/MeVChiTok.fa
+  gff: ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/854/845/GCF_000854845.1_ViralProj15025/GCF_000854845.1_ViralProj15025_genomic.gff.gz
+  contig: MeVChiTok
+
+# Human reference genome
+human:
+  location: public
+  ref: ftp://ftp.ensembl.org/pub/release-99/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+  gff: ftp://ftp.ensembl.org/pub/release-99/gtf/homo_sapiens/Homo_sapiens.GRCh38.99.gff.gz
+
+#### ------------------------ Params ----------------------- ####
+
+# Desired thread count for each rule
+threads:
+  max_cpu: 32
+  pileup: 16
+
+
+# Average base quality score to exclude below
+BQ: 25
+
+# Bin size for coverage graphs
+bin_size: 50
+
+# Parameters for variant calling.
+min_coverage: 100
+min_reads_supporting: 10
+min_allele_frequency: 0.005
+strand_bias_filter: 1
+maxdepth: 600000
+
+#### ------------------------- Dirs ------------------------ ####
+
+# ++ Results Directoties ++ #
+fastq_dir: results/fastq
+trim_dir: results/trimmed
+filter_dir: results/filtered
+align_dir: results/aligned
+
+# ++ Config Directoties ++ #
+tools: config/tools
+ref_dir: config/ref
+gff_dir: config/gff
+index_dir: 
+  bwa: config/index/bwa
+  samtools: config/index/samtools
