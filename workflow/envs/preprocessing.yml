@@ -1,0 +1,5 @@
+channels:
+    - bioconda
+dependencies:
+    - bbmap=38.86
+    - fastp=0.23.1
