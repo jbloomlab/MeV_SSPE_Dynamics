@@ -1,0 +1,9 @@
+#Name,Accession,Start,Stop,Strand,GeneID,Locus,Locus tag,Protein product,Length,Protein Name
+"viral segment","NC_001498.1",108,1685,"+",1489804,"N","MeVgp1","NP_056918.1",525,"nucleocapsid protein"
+"viral segment","NC_001498.1",1807,3330,"+",1489805,"P/V/C","MeVgp2","NP_056919.1",507,"phosphoprotein"
+"viral segment","NC_001498.1",1807,2705,"+",1489805,"P/V/C","MeVgp2","YP_003873249.2",299,"V protein"
+"viral segment","NC_001498.1",1829,2389,"+",1489805,"P/V/C","MeVgp2","NP_056920.1",186,"C protein"
+"viral segment","NC_001498.1",3438,4445,"+",1489803,"M","MeVgp3","NP_056921.1",335,"matrix protein"
+"viral segment","NC_001498.1",5458,7110,"+",1489800,"F","MeVgp4","NP_056922.1",550,"fusion protein"
+"viral segment","NC_001498.1",7271,9124,"+",1489801,"H","MeVgp5","NP_056923.1",617,"hemagglutinin protein"
+"viral segment","NC_001498.1",9234,15785,"+",1489802,"L","MeVgp6","NP_056924.1",2183,"large polymerase protein"
