@@ -9,7 +9,8 @@ __default__:
   user: wwh22@uw.edu
   mailtype: END
 
-filter_reads_se:
+
+filter_reads:
   cpus: 32
   partition: campus-new
   time: 0-2
@@ -18,14 +19,6 @@ filter_reads_se:
   user: wwh22@uw.edu
   mailtype: END
 
-filter_reads_pe:
-  cpus: 32
-  partition: campus-new
-  time: 0-2
-  mem: 100000
-  name: "{rule}"
-  user: wwh22@uw.edu
-  mailtype: END
 
 bwa_align:
   cpus: 16
@@ -34,14 +27,32 @@ bwa_align:
   user: wwh22@uw.edu
   mailtype: END
 
-bwa_index:
+
+bwa_realign:
   cpus: 16
   partition: campus-new
   time: 0-4
   user: wwh22@uw.edu
   mailtype: END
 
-test_parsing:
+
+make_sspe_reference:
+  cpus: 16
+  partition: campus-new
+  time: 0-4
+  user: wwh22@uw.edu
+  mailtype: END
+
+
+lofreq_calling:
+  cpus: 16
+  partition: campus-new
+  time: 0-4
+  user: wwh22@uw.edu
+  mailtype: END
+
+
+cliqueSNV:
   cpus: 16
   partition: campus-new
   time: 0-4

@@ -62,6 +62,10 @@ fastq_dir: results/fastq
 trim_dir: results/trimmed
 filter_dir: results/filtered
 align_dir: results/aligned
+realign_dir: results/realigned
+variant_dir: results/variants
+haplotype_dir: results/haplotypes
+
 
 # ++ Config Directoties ++ #
 tools: config/tools

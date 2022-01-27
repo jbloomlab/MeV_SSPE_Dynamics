@@ -25,7 +25,8 @@ samples = list(set(pd.read_csv(config['samples']['file'])['Run']))
 
 rule all:
     input: 
-        expand(join(config['align_dir'], "{accession}", "{accession}.sorted.bam"), accession = samples)
+        join(config['variant_dir'], "variants.csv"),
+        expand(join(config['haplotype_dir'], "{accession}"), accession=samples)
 
       
 rule clean:
@@ -41,3 +42,6 @@ rule clean:
 include: "rules/preprocessing.smk"
 include: "rules/format-reference.smk"
 include: "rules/align-reads.smk"
+include: "rules/call-variants.smk"
+include: "rules/download-tools.smk"
+include: "rules/call-haplotypes.smk"

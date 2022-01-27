@@ -43,6 +43,29 @@ rule bwa_align:
         """
 
 
-
-
+rule bwa_realign:
+    """ 
+    Perform short read alignment of the filtered 
+    viral readas with `bwa-mem`. Realigning to SSPE consensus.
+    
+    Sort the aligned reads with samtools sort.
+    """
+    input: 
+        reads = [join(config['filter_dir'], "{accession}", "{accession}_R1.fastq.gz"), 
+                 join(config['filter_dir'], "{accession}", "{accession}_R2.fastq.gz")],
+        genome = join(config['index_dir']['bwa'], 'MeVChiTok-SSPE.fa')
+    output: bam = join(config['realign_dir'], "{accession}", "{accession}.sorted.bam"),
+            bai = join(config['realign_dir'], "{accession}", "{accession}.sorted.bam.bai")
+    threads: config['threads']['max_cpu']
+    params: readgroup = lambda wildcards: get_readgroup(wildcards) 
+    conda: '../envs/align.yml'
+    shell: 
+        """
+        bwa mem -t {threads} \
+            -R "@RG\\tID:1\\tSM:{params.readgroup}\\tLB:cattaneo\\tPU:illumina" {input.genome} \
+            {input.reads} | \
+            samtools view -bh | \
+            samtools sort -o {output.bam} - 
+        samtools index {output.bam}
+        """
     
