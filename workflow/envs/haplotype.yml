@@ -1,0 +1,7 @@
+channels:
+  - anaconda
+  - bioconda
+dependencies:
+  - openjdk
+  - samtools=1.7
+

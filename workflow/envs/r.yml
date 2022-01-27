@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-tidyverse
+  - bioconductor-deseq2
+  - bioconductor-rsamtools
+  - r-seqinr
+  - r-gridgraphics
+  - r-ggrepel
