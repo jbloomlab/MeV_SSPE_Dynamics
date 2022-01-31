@@ -127,6 +127,7 @@ cluster.snps <- function(list.of.snps, snp.df, n.clusters) {
   return(left_join(kmedoids.SNPs, n.clusters.per.snp, by = "cluster"))
   
 }
+
 ```
 
 ### Haplotypes found at 25% or more. 
@@ -245,7 +246,7 @@ updated.haplotype.df = labeled.df %>%
 
 Now, I'll look at the clusters that have multiple SNPs where the allele frequency goes above 25% in at least one tissue sample and have the clearest correlations. I'll also try to figure out which background they're on based on the 'pigeon hole principle'. 
 
-```{r Multi SNP Clusters above 25% clear corr, fig.align='center', fig.width=19, fig.height=10}
+```{r Multi SNP Clusters aboveclear corr, fig.align='center', fig.width=19, fig.height=10}
 
 # Clusters with very clear correlations 
 twentyfive.percent.or.more.clusters.df %>% 
@@ -322,7 +323,7 @@ updated.haplotype.df = updated.haplotype.df %>%
 
 Now, I'll work on the remaining clusters that are correlated, but might be broken down into further clusters. 
 
-```{r Multi SNP Clusters above 25% less clear corr, fig.align='center', fig.width=19, fig.height=10}
+```{r Multi SNP Clusters above less clear corr, fig.align='center', fig.width=19, fig.height=10}
 
 # Clusters with very clear correlations 
 twentyfive.percent.or.more.clusters.df %>% 
@@ -366,7 +367,7 @@ updated.haplotype.df = updated.haplotype.df %>%
 
 Now, cluster 19 needs a little more rectifying. I think cluster 19 is two to three separate but related haplotypes. 
 
-```{r Cluster 19 SNPs, fig.align='center', fig.width=10, fig.height=5}
+```{r Cluster nineteen SNPs, fig.align='center', fig.width=10, fig.height=5}
 
 cluster.19.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(19)) %>% 
@@ -427,7 +428,7 @@ updated.haplotype.df = updated.haplotype.df %>%
 
 Finally, cluster 4. These mutations probably can't be haplotyped with this method because they are mostly found in the Frontal Cortext 2 and missing everywhere else. I would hazard a guess that these are mutations on the background of genome-1-1, but this would need to be proven with read information. 
 
-```{r Cluster 4 SNPs, fig.align='center', fig.width=8, fig.height=8}
+```{r Cluster four SNPs, fig.align='center', fig.width=8, fig.height=8}
 
 cluster.4.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(4)) %>% 
@@ -564,18 +565,40 @@ updated.haplotype.df = updated.haplotype.df %>%
 
 ```
 
+
+```{r fig.width=19, fig.height=10}
+
+twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(6, 5, 16)) %>% 
+    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+      geom_line(aes(group = SNP)) +
+      geom_line(data = filter(twentyfive.percent.or.fewer.clusters.mean, cluster %in% c(6, 5, 16)), aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
+      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+      facet_wrap(~cluster_size) + 
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Haplotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+
+```
+
 ## What's left to cluster? 
 
 There are still a good number of mutations that need to be clustered. About 300. However, over half of these can't physically be haplotyped because they are too low frequency. Several of these are also probably only in a single sample. 
 
-```{r}
+```{r Whats remaining, message=FALSE, warning=FALSE, fig.align='center', fig.width= 5, fig.height=5}
 
 # Still labeled as 'subclonal' 
 mutations.with.no.info = updated.haplotype.df %>% 
   filter(Background == 'subclonal') %>% 
   pull(SNP) %>% 
-  unique() %>% 
-  length()
+  unique()
+print(paste("There are about", length(mutations.with.no.info), "that are still totally un-haplotyped."))
+
 
 # Never above 5% - nearly impossible to haplotype 
 mutations.never.above.5perc = updated.haplotype.df %>% 
@@ -584,18 +607,162 @@ mutations.never.above.5perc = updated.haplotype.df %>%
   summarise(Max = max(AF)) %>% 
   filter(Max <= 0.05) %>% 
   pull(SNP) %>% 
-  unique() %>% 
-  length()
+  unique()
 
 # Mutations that have some info
 mutations.with.info = updated.haplotype.df %>% 
   filter(Background != 'subclonal') %>% 
   pull(SNP) %>% 
-  unique() %>% 
-  length()
+  unique()
+print(paste("There are ", length(mutations.with.info), "that have at least been clustered."))
 
 
-# Mutations only in a single sample?
+# Mutations that are left, but are above 5% some of the time. 
+mutations.left.to.haplotype = mutations.with.no.info[which(!mutations.with.no.info %in% mutations.never.above.5perc)]
+print(paste("There are still about", length(mutations.left.to.haplotype), "that can reasonably be haplotyped."))
+
+# What's the distribution of the frequency of these mutations?
+updated.haplotype.df %>% 
+  filter(SNP %in% mutations.left.to.haplotype) %>% 
+  ggplot(aes(x = AF)) + 
+    geom_histogram() + 
+    theme_bw()
+
 
 ```
+
+# What positions should be haplotyped? 
+
+Using the information from what's been haplotyped using this method, what's the best region to attempt to haplotype? 
+
+```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
+
+# Import genome annotations
+annotations.df = read_csv(annotations.filepath)
+
+# Get the interval positions for these genes 
+N = annotations.df %>% dplyr::filter(Locus == "N")
+P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
+M = annotations.df %>% dplyr::filter(Locus == "M")
+F. = annotations.df %>% dplyr::filter(Locus == "F")
+H = annotations.df %>% dplyr::filter(Locus == "H")
+L = annotations.df %>% dplyr::filter(Locus == "L")
+
+# Add gene names to the variants
+updated.haplotype.df = updated.haplotype.df %>% 
+  mutate(Gene = case_when(POS < N$Start ~ "3'UTR",
+                          POS > L$Stop ~ "5'UTR", 
+                          TRUE ~ Gene_Name)) 
+
+tissue_colors = c("#ef476f","#ffd166","#06d6a0","#118ab2","#073b4c", "#DDA0DD")
+
+# Tissue order
+tissue_order = c("Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Frontal Cortex 2", 
+  "Temporal Lobe", 
+  "Parietal Lobe",
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Cerebellum",
+  "Cerebellum Nucleus",
+  "Midbrain", 
+  "UBS",
+  "Brain Stem")
+
+
+```
+
+
+```{r Genome Labeled Mutations, warning=FALSE, message=FALSE, fig.align='center', fig.width=18, fig.height=12}
+
+updated.haplotype.df %>% 
+  filter(Background %in% c("genome-1", "genome-2")) %>% 
+  ggplot(aes(x = POS, y = factor(Tissue, levels = rev(tissue_order)))) +
+    geom_point(aes(col = Background), shape = 108, size = 6) +
+    xlab("Position") +
+    # Annotations of genes #
+    # Nucleoprotein
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
+    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 10) +
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 14 ,
+                   alpha = .1, fill = "dodgerblue2", size = .1) +  
+    # P/V/C
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "yellow3", col = "black", size = .1) +
+    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 10) +
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "yellow3", size = .1) +
+    # Matrix protein
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
+    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 10)  +
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#FF7F00", size = .1) +
+    # Fusion protein
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
+    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .25, label = "F", family = "helvetica", size = 10) +
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#6A3D9A", size = .1) +
+    # Hemagluttinin
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "green4", col = "black", size = .1) +
+    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 10) +
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 14,
+               alpha = .1, fill = "green4", size = .1) +
+    # Large protein
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
+    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 10) +
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#E31A1C", size = .1) +
+    scale_color_manual(values = c("#307EC2", "#B63F3E", "grey")) +
+    theme_classic() +
+    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+    theme(legend.position="bottom", legend.box = "horizontal") +
+    theme(legend.box.background = element_rect(colour = "black")) +
+    theme(text=element_text(size=24)) + 
+    theme(axis.text.x = element_text(size=28)) + 
+    theme(axis.title.x = element_text(size=30)) + 
+    theme(plot.title = element_text(hjust = 0.5))  +
+    theme(axis.title.y = element_blank()) +
+    scale_x_continuous(limits=c(0,16000)) +
+    theme(legend.position = "bottom") 
+
+  
+```
+
+```{r}
+write_csv(updated.haplotype.df, "../../results/spatial/labeled_subhaplotypes.csv")
+```
+
+```{r fig.align='center', fig.width=18, fig.height=12}
+
+# SNP as column and Allele frequency as row
+frequency.by.snp = updated.haplotype.df %>% 
+  filter(!Background %in% c("genome-1", "genome-2")) %>% 
+  select(AF, SNP, Tissue) %>% 
+  pivot_wider(names_from = SNP, values_from = AF, values_fill = 0)  %>% 
+  remove_rownames %>% 
+  column_to_rownames(var = "Tissue")
+
+
+brain.pca = prcomp(frequency.by.snp, center = TRUE, scale. = TRUE)
+
+brain.pca$x
+
+brain.pca$rotation
+
+brain.pca$center
+
+```
+
+
+
+What's a good measure of distance between the samples?
+
+## END
 

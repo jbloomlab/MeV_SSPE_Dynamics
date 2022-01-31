@@ -65,7 +65,7 @@ align_dir: results/aligned
 realign_dir: results/realigned
 variant_dir: results/variants
 haplotype_dir: results/haplotypes
-
+coverage_dir: results/coverage
 
 # ++ Config Directoties ++ #
 tools: config/tools

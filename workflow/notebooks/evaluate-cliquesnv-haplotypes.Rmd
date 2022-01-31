@@ -1,0 +1,266 @@
+---
+title: "Evaluate CliqueSNV Haplotypes"
+author: "Will Hannon"
+date: "1/27/2022"
+output: html_document
+---
+
+The goal of this notebook is to look at the haplotypes outputted by `CliqueSNV` with different parameters over different regions of the genome. I want to determine which parameters are optimal for a given set of tissues. I also want to see how well the tool performs generally. Ideally, I can use the output of this tool to stitch together a set of haplotypes for inference. 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+
+packages = c("tidyverse", "UpSetR", "ComplexHeatmap", "cluster")
+## Check that packages are installed, if not, install them
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, include=FALSE}
+
+## ==== File paths input data ==== ##
+
+# Data from lofreq and varscan and ivar
+variant.data = "../../results/variants/variants.csv"
+
+# Data from lofreq and varscan labeled with G1 and G2 mutations
+labeled.data = "../../results/spatial/final_variants.csv"
+
+# Data from lofreq and varscan labeled with subclonal haplotypes
+updated.data = "../../results/spatial/labeled_subhaplotypes.csv"
+
+# Haplotypes parsed from CliqueSNV
+haplotype.data = "../../results/haplotypes/haplotypes.csv"
+
+# Import the sample data
+sample.data = "../../config/samples.csv"
+
+# Annotations 
+annotations.filepath = "../../config/annotations.csv"
+
+## ==== File paths output data ==== ##
+
+# Path to save the figures for lab meeting 
+output.path = "../../results/spatial"
+
+```
+
+
+## Evaluate CliqueSNV Haplotypes
+
+I first tried to cut the genome in 3000 bp chunks with 2000 bp overlaps. I did this with five different values for minimum O22 count (`t` in `CliqueSNV`) `[20, 40, 80, 120, 360]` and four different values minimum haplotype fraction (`tf` in `CliqueSNV`) `[0.02, 0.05, 0.1, 0.25]`. All of these combinations  resulted in a significant fraction of haplotypes that were verifiably false, i.e. haplotypes that contained two mutually exclusive SNPs. There was no clear correlation between values of `t` and `tf` and the fraction of false haplotypes. This led me to suspect that the specificity issue was the result of the size of the region being haplotyped, not the parameters. I re-did this for smaller regions of 500 bp with 250 bp overlaps and two values for `t` (10, and 100) and one value for `tf` (0.05).
+
+```{r Process for Haplotyping, warning=F, message=F}
+
+# Upload the main variant calling files
+updated.df = read_csv(updated.data)
+labeled.df = read_csv(labeled.data)
+  
+# Get the mean frequency of the major genomes for plotting
+tissue.mean = labeled.df %>% 
+  filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF.mean = mean(AF, na.rm = TRUE), 
+            SD = sd(AF, na.rm = TRUE),
+            N = n()) %>% 
+  mutate(SE = SD / sqrt(N),
+         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
+         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
+  rename("AF" = AF.mean)
+
+
+# Join the haplotyping information to the variant calling data frame. 
+haplotype_df = read_csv(haplotype.data) %>% 
+  mutate(SNP = paste0(REF, POS, ALT), 
+         Interval = paste(Start, Stop, sep = "-"),
+         Parameter_Combination = paste(`T`, TF, Start, Stop, sep = "-")) %>% 
+  left_join(updated.df, ., by = c("POS", "REF", "ALT", "SNP", "Tissue")) 
+
+```
+
+### Are there haplotypes that are verifiably false? 
+
+I consider a haplotype that is "false" as a haplotype with two mutually exclusive SNPs. I define mutually exclusive SNPs as those which are defined as primary G1 or G2 SNPs or SNPs that have been classied as G1 or G2 while clustering subclonal mutations. 
+
+```{r Verifiably False Haplotypes}
+
+# Calculating some value of percision
+# (n haplotypes with G1 and G2) / (n haplotypes with only G1 or G2)
+
+verified.haplotypes.df = haplotype_df %>% 
+  # Only get the mutations that were haplotyped
+  filter(!is.na(HAPID)) %>%
+  # We really only care about the haplotypes that we can verify - so G1 or G2
+  filter(Background %in% c("genome-1", "genome-2")) %>%
+  # Group by the uniquely haplotyped samples and params
+  group_by(Tissue, `T`, TF, Interval, HAPID, Background) %>% 
+  # Count the number of SNPs that fall into each catagory 
+  count() %>% 
+  pivot_wider(names_from = Background, values_from = n, values_fill = 0) %>% 
+  mutate(Obsv = `genome-1` + `genome-2`) %>% 
+  # We can ignore haplotypes with only one G1 or one G2, these aren't informative. 
+  filter(Obsv > 1) %>% 
+  mutate(`genome-1_obs` = if_else(`genome-1` == 0, 0, 1)) %>% 
+  mutate(`genome-2_obs` = if_else(`genome-2` == 0, 0, 1)) %>% 
+  mutate(Haplotype = if_else(`genome-1_obs` + `genome-2_obs` == 2, "mixed", "single"))
+  
+
+false.haplotypes = verified.haplotypes.df %>% 
+  filter(`T` == 10) %>% 
+  group_by(Haplotype) %>%
+  summarise(count = n()) %>% 
+  pivot_wider(names_from = Haplotype, values_from = count) %>% 
+  mutate(fraction_false = mixed/single)
+
+print(paste("There are only", round(false.haplotypes$fraction_false * 100, digits = 2), "percent of total haplotypes with genome-1 and genome-2 mutations that are verifiably false."))
+
+# The issues are more or less in the same region. What's wrong with this region?
+verified.haplotypes.df %>% 
+  filter(`T` == 10) %>% 
+  filter(Haplotype == "mixed") %>% 
+  ungroup() %>% 
+  select(Tissue, Interval)
+
+
+false.haplotypes.to.explore = verified.haplotypes.df %>% 
+  filter(`T` == 10) %>% 
+  filter(Haplotype == "mixed")  %>% 
+  ungroup() %>% 
+  select(Tissue, Interval, `T`, TF, HAPID) %>% 
+  mutate(Exclusive = "True")
+
+
+```
+
+The smaller regions work *much* better as an approach to accurately call haplotypes. There are only 3 haplotypes out of ~250 that are verifiably false. Interestingly, these are all pretty much in the same region of the genome (`3049 - 4549`). Is there something special about this region? Perhaps a significant decrease in coverage? 
+
+```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
+
+# Import genome annotations
+annotations.df = read_csv(annotations.filepath)
+
+# Get the interval positions for these genes 
+N = annotations.df %>% dplyr::filter(Locus == "N")
+P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
+M = annotations.df %>% dplyr::filter(Locus == "M")
+F. = annotations.df %>% dplyr::filter(Locus == "F")
+H = annotations.df %>% dplyr::filter(Locus == "H")
+L = annotations.df %>% dplyr::filter(Locus == "L")
+
+tissue_colors = c("#ef476f","#ffd166","#06d6a0","#118ab2","#073b4c", "#DDA0DD")
+
+# Tissue order
+tissue_order = c("Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Frontal Cortex 2", 
+  "Temporal Lobe", 
+  "Parietal Lobe",
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Cerebellum",
+  "Cerebellum Nucleus",
+  "Midbrain", 
+  "UBS",
+  "Brain Stem")
+
+
+```
+I doesn't seem like the problem is a coverage issue. Aside from the fact that Cerebellum has less relative coverage to other samples, the is nothing special about this particular region. 
+
+```{r Coverage, warning=F, message=F, fig.width=18, fig.height=6}
+
+coverage.df = read.table("../../results/coverage/merged.depth", header = T) %>% 
+  mutate(Position = (Stop + Start)/2) 
+  
+coverage.df %>% 
+  filter(Accession %in% c("Cerebellum", "Occipital_Lobe", "Parietal_Lobe")) %>% 
+  ggplot(aes(x = Position, y = Depth, col = Accession)) +
+    geom_line(size = 1.5)  +
+    facet_wrap(~Accession, nrow = 1) + 
+    xlab("Position") +
+    annotate("rect", xmin = 3049, xmax = 4549, ymin = .5, ymax = max(coverage.df$Depth) ,
+                   alpha = .1, fill = "dodgerblue2", size = .1) +  
+    theme_classic() +
+    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+    theme(legend.position="bottom", legend.box = "horizontal") +
+    theme(legend.box.background = element_rect(colour = "black")) +
+    theme(text=element_text(size=24)) + 
+    theme(axis.text.x = element_text(size=28)) + 
+    theme(axis.title.x = element_text(size=30)) + 
+    theme(plot.title = element_text(hjust = 0.5))  +
+    theme(axis.title.y = element_blank()) +
+    scale_x_continuous(limits=c(0,16000)) +
+    theme(legend.position = "none") 
+
+
+```
+
+Perhaps it has something to do with the SNPs involved and something is mis-annotated as `genome-1` or `genome-2`? The mis-annotated SNP in the cerebellum probably has something to do with the low coverage and distance from other mutations. I'm not sure what's going on with the other two. They involve the same mutation - `C4502T`.
+
+```{r False Haplotypes, fig.align='center', fig.width=14, fig.height=5}
+
+haplotype_df %>% 
+  left_join(., false.haplotypes.to.explore, by = c("Tissue", "Interval", "T", "TF", "HAPID")) %>% 
+  filter(!is.na(Exclusive)) %>% 
+  ggplot(aes(x = POS, y = AF, col = Haplotype, shape = Background)) + 
+    geom_point(size = 2.5) + 
+    facet_wrap(~(Tissue)) + 
+    theme_bw(18)
+
+```
+
+It's not super clear to me why this mutation would be mis-annotated? 
+
+```{r Tricky Mutation, fig.align='center', fig.width=8, fig.height=6}
+
+# Plot the clusters
+labeled.df %>% 
+  filter(SNP == "C4502T") %>% 
+    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+      geom_line(aes(group = SNP)) +
+      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+      facet_wrap(~SNP) + 
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Haplotype", col = "Cluster") +
+      theme_bw(16) +
+      theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+```
+
+
+# Define more clusters 
+
+```{r Look for Haplotypes, fig.align='center', fig.width=10, fig.height=8}
+
+
+
+# Plot the clusters
+haplotype_df %>% 
+  filter(`T` == 10) %>% 
+  filter(Start == 3549) %>% 
+  filter(Tissue == "Frontal Cortex 2") %>% 
+  ggplot(aes(x = POS, y = AF, col = Haplotype, shape = Background)) + 
+    geom_point(size = 2.5) + 
+    facet_grid(rows = vars(HAPID), cols = vars(reorder(Interval, Start))) + 
+    theme_bw(18)
+
+
+```
+

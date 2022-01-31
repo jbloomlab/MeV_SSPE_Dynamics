@@ -22,6 +22,7 @@ packages = c("tidyverse", "UpSetR", "ComplexHeatmap", "cluster")
 ## Check that packages are installed, if not, install them
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
+  
   install.packages(packages[!installed_packages])
 }
 ## Packages loading
@@ -138,13 +139,13 @@ total.variants = combined.variants.df %>%
   filter(n == 2) %>% 
   pull(SNP)
 
-print(paste("There are", length(quality.variants),"unique quality variants."))
+print(paste("There are", length(total.variants),"unique quality variants."))
 
 
 # Then, I'll figure out how many of these are missing in a specific tissue in one method
 missing.from.one = combined.variants.df %>% 
   filter(Caller != "ivar") %>% 
-  filter(SNP %in% quality.variants) %>% 
+  filter(SNP %in% total.variants) %>% 
   select(SNP, Accession, Caller) %>% 
   group_by(SNP, Accession) %>% 
   count() %>% 
