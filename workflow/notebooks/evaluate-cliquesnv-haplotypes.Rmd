@@ -69,8 +69,21 @@ I first tried to cut the genome in 3000 bp chunks with 2000 bp overlaps. I did t
 updated.df = read_csv(updated.data)
 labeled.df = read_csv(labeled.data)
   
-# Get the mean frequency of the major genomes for plotting
-tissue.mean = labeled.df %>% 
+haplotypes.label = updated.df %>% 
+  select(SNP, Haplotype, Background) %>% 
+  distinct()
+
+# Expand the mutations to have a frequency for every tissue.
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Get the mean frequency of the major genomes 
+tissue.mean = updated.df %>% 
   filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
   group_by(Tissue, Haplotype) %>% 
   summarize(AF.mean = mean(AF, na.rm = TRUE), 
@@ -79,7 +92,7 @@ tissue.mean = labeled.df %>%
   mutate(SE = SD / sqrt(N),
          Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
          Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
-  rename("AF" = AF.mean)
+  rename("AF" = AF.mean) 
 
 
 # Join the haplotyping information to the variant calling data frame. 
@@ -245,22 +258,113 @@ labeled.df %>%
 ```
 
 
-# Define more clusters 
+# Interesting Clusters? 
 
-```{r Look for Haplotypes, fig.align='center', fig.width=10, fig.height=8}
+So far, it seems like this version of `CliqueSNV` work *alright*, with the caveat that we don't really know how to judge this other than by comparing it to previous, worse runs. 
 
+My next questions is whether I can identify clusters of mutations that seem reasonably like haplotypes. Also, can I Identify the background of already known clusters?
 
+```{r}
 
 # Plot the clusters
 haplotype_df %>% 
   filter(`T` == 10) %>% 
-  filter(Start == 3549) %>% 
-  filter(Tissue == "Frontal Cortex 2") %>% 
-  ggplot(aes(x = POS, y = AF, col = Haplotype, shape = Background)) + 
-    geom_point(size = 2.5) + 
-    facet_grid(rows = vars(HAPID), cols = vars(reorder(Interval, Start))) + 
-    theme_bw(18)
+  filter(Background == "subclonal") %>% 
+  group_by(Tissue, Interval, HAPID) %>% 
+  count() %>% arrange(-n)
 
+```
+
+```{r Look for Haplotypes, fig.align='center', fig.width=15, fig.height=10}
+
+  
+
+# Plot the clusters
+hap.snps = haplotype_df %>% 
+  filter(`T` == 10) %>% 
+  filter(Tissue == "Frontal Cortex 2") %>% 
+  filter(Interval == "4049-4549") %>% 
+  filter(HAPID == 2) %>% 
+  pull(SNP)
+  
+  
+# Plot the clusters
+expanded.df %>% 
+  filter(SNP %in% hap.snps) %>%
+    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+      geom_line(aes(group = SNP, col = Background)) +
+      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      # facet_wrap(~SNP) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Haplotype", col = "Cluster") +
+      theme_bw(16) +
+      theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+
+
+```
+
+```{r Function to Cluster SNPs by Frequency }
+
+cluster.snps <- function(list.of.snps, snp.df, n.clusters) {
+  
+  # SNP as column and Allele frequency as row
+  frequency.by.snp = snp.df %>% 
+    filter(SNP %in% list.of.snps) %>% 
+    select(AF, SNP, Tissue) %>% 
+    pivot_wider(names_from = SNP, values_from = AF, values_fill = 0) %>% 
+    select(!Tissue) 
+  
+  # Calculate R between every pair of columns while handling NAs 
+  snp.correlation = cor(frequency.by.snp, use="pairwise.complete.obs")
+  
+  # Convert to distance (positive corr is close to 0)
+  snp.dist = as.dist(1 - snp.correlation)
+  
+  # Create k-medoids clustering with n clusters
+  snp.kmedoids = pam(snp.dist, n.clusters) 
+  kclusters = snp.kmedoids$cluster
+  
+  # Convert to a data frame
+  kclusters.df = data.frame(SNP = names(kclusters), cluster = kclusters)
+
+  # Assign the clusters to the original data frame
+  kmedoids.SNPs = snp.df %>% 
+    filter(SNP %in% list.of.snps) %>% 
+    left_join(., kclusters.df, by = "SNP") %>% 
+    mutate(cluster = if_else(is.na(cluster), "no cluster", as.character(cluster)))
+  
+  n.clusters.per.snp = kmedoids.SNPs %>% 
+    select(SNP, cluster) %>%
+    distinct() %>% 
+    group_by(cluster) %>% 
+    count() %>% 
+    mutate(cluster_size = paste0(cluster, " (", n, " snps in cluster)"))
+  
+  return(left_join(kmedoids.SNPs, n.clusters.per.snp, by = "cluster"))
+  
+}
+
+```
+
+
+```{r Tsting, fig.align='center', fig.width=15, fig.height=10}
+
+cluster.snps(snp.df = expanded.df, list.of.snps = hap.snps, n.clusters = 6) %>% 
+    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+      geom_line(aes(group = SNP)) +
+      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+      facet_wrap(~cluster_size) + 
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Haplotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
 
 ```
 

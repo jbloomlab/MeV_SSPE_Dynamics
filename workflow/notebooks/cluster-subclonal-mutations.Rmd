@@ -1,11 +1,11 @@
 ---
-title: "Haplotype Subclonal Mutations"
+title: "3. Haplotype Subclonal Mutations"
 author: "Will Hannon"
 date: "1/26/2022"
 output: html_document
 ---
 
-The goal of this notebook is to identify other clusters of mutations with same approach used to define mutations in Genome-1 and Genome-2. Hopefully, these can be used to establish some base subclonal haplotypes. 
+The goal of this notebook is to identify other clusters of mutations with same approach used to define mutations in Genome-1 and Genome-2. Hopefully, these can be used to establish some base sub clonal haplotypes. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ## List of all packages needed
 
-packages = c("tidyverse", "UpSetR", "ComplexHeatmap", "cluster")
+packages = c("tidyverse", "cluster")
 ## Check that packages are installed, if not, install them
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
@@ -33,11 +33,8 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 ## ==== File paths input data ==== ##
 
-# Data from lofreq and ivar
-variant.data = "../../results/variants/variants.csv"
-
-# Data from lofreq and ivar labeled with G1 and G2 mutations
-labeled.data = "../../results/spatial/final_variants.csv"
+# Data from lofreq and varscan labeled with G1 and G2 mutations
+labeled.data = "../../results/spatial/labeled_variants.csv"
 
 # Import the sample data
 sample.data = "../../config/samples.csv"
@@ -45,11 +42,14 @@ sample.data = "../../config/samples.csv"
 # Annotations 
 annotations.filepath = "../../config/annotations.csv"
 
+```
+
+```{r Outputs, include=FALSE}
+
 ## ==== File paths output data ==== ##
 
 # Path to save the figures for lab meeting 
 output.path = "../../results/spatial"
-
 ```
 
 ```{r Process for Haplotyping, warning=F, message=F}
@@ -80,6 +80,21 @@ tissue.mean = labeled.df %>%
          Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
          Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
   rename("AF" = AF.mean)
+
+# Tissue order
+tissue_order = c("Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Frontal Cortex 2", 
+  "Temporal Lobe", 
+  "Parietal Lobe",
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Cerebellum",
+  "Cerebellum Nucleus",
+  "Midbrain", 
+  "UBS",
+  "Brain Stem")
 
 ```
 
@@ -130,7 +145,7 @@ cluster.snps <- function(list.of.snps, snp.df, n.clusters) {
 
 ```
 
-### Haplotypes found at 25% or more. 
+## Haplotyping subclonal mutations
 
 Can I link the SNPs that reach reasonably high frequency in some samples? I define these as reaching 25% or more in at least one tissue. However, I'm leaving out the mutations that are fixed in 10 or more samples - these should probably be included in the SSPE consensus.
 
@@ -147,7 +162,7 @@ fixed.in.more.than.eleven.snps = expanded.df %>%
   filter(n >= 10) %>% 
   pull(SNP)
 
-# SNPs that are above 50% at some point in some tissue
+# SNPs that are above 20% at some point in some tissue
 twentyfive.percent.or.more.snps = expanded.df %>% 
   filter(Haplotype == "subclonal") %>% 
   filter(AF >= 0.25) %>%
@@ -221,7 +236,7 @@ genome.2.missing.snps = twentyfive.percent.or.more.clusters.df %>%
 
 # Clusters that break the rules 
 maybe.in.both.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(10, 11, 12, 15)) %>% 
+  filter(cluster %in% c(11, 12)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -244,17 +259,16 @@ updated.haplotype.df = labeled.df %>%
 
 ```
 
-Now, I'll look at the clusters that have multiple SNPs where the allele frequency goes above 25% in at least one tissue sample and have the clearest correlations. I'll also try to figure out which background they're on based on the 'pigeon hole principle'. 
+Now, lets look at the remainder of the clusters of SNPs. 
 
-```{r Multi SNP Clusters aboveclear corr, fig.align='center', fig.width=19, fig.height=10}
+```{r Remaining Clusters, fig.align='center', fig.width=19, fig.height=10}
 
-# Clusters with very clear correlations 
 twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(14, 18, 2, 20, 5, 7)) %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP)) +
-      geom_line(data = filter(twentyfive.percent.or.more.clusters.mean, cluster %in% c(14, 18, 2, 20, 5, 7)), aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+  filter(!cluster %in% c("8", "13", "6", "11", "12")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(data = filter(twentyfive.percent.or.more.clusters.df, !cluster %in% c("8", "13", "6", "11", "12")),
+                aes(x = factor(Tissue, levels = tissue_order), y = AF, group = SNP, col = (cluster)), size = 1) +
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
       facet_wrap(~cluster_size) + 
       scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
       xlab("Tissue") + 
@@ -265,183 +279,117 @@ twentyfive.percent.or.more.clusters.df %>%
       theme(strip.text.x = element_text(size = 12))
 
 
-# Likely genome-1
-cluster.14.snps = twentyfive.percent.or.more.clusters.df %>% 
+```
+
+16 is probably the same as 1, just low coverage in the Cerebellum and Cerebellum Nucleus.
+
+10 and 15 are likely fixed, just missing because of low coverage. We'll call these fixed for now. 
+
+```{r Multi SNP Clusters aboveclear corr, fig.align='center', fig.width=19, fig.height=10}
+
+# Likely Fixed 
+probably.fixed.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(10, 15)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# Genome-1 
+cluster.1.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(1, 16)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# Genome-1 
+cluster.2.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(14)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Likely genome-1
-cluster.18.snps = twentyfive.percent.or.more.clusters.df %>% 
+# Genome-1 
+cluster.3.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(18)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Certainly genome-2
-cluster.2.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(2)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Certainly genome-2 
-cluster.5.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(5)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Unknown
-cluster.7.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(7)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Unknown
-cluster.20.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(20)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-  
-# Annotate the labeled data frame with what's possible here
-updated.haplotype.df = updated.haplotype.df %>%
-  mutate(Background = case_when(SNP %in% cluster.14.snps ~ "genome-1",
-                                SNP %in% cluster.18.snps ~ "genome-1",
-                                SNP %in% cluster.2.snps ~ "genome-2",
-                                SNP %in% cluster.5.snps ~ "genome-2",
-                                SNP %in% cluster.7.snps ~ "unknown",
-                                SNP %in% cluster.20.snps ~ "unknown",
-                                TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(SNP %in% cluster.14.snps ~ "genome-1-C1",
-                                SNP %in% cluster.18.snps ~ "genome-1-C2",
-                                SNP %in% cluster.2.snps ~ "genome-2-C1",
-                                SNP %in% cluster.5.snps ~ "genome-2-C2",
-                                SNP %in% cluster.7.snps ~ "unknown-C1",
-                                SNP %in% cluster.20.snps ~ "unknown-C2",
-                                TRUE ~ Haplotype)) 
-
-```
-
-Now, I'll work on the remaining clusters that are correlated, but might be broken down into further clusters. 
-
-```{r Multi SNP Clusters above less clear corr, fig.align='center', fig.width=19, fig.height=10}
-
-# Clusters with very clear correlations 
-twentyfive.percent.or.more.clusters.df %>% 
-  filter(n > 1 & !cluster %in% c(14, 18, 2, 20, 5, 7)) %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP)) +
-      geom_line(data = filter(twentyfive.percent.or.more.clusters.mean, n > 1 & !cluster %in% c(14, 18, 2, 20, 5, 7)), aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      facet_wrap(~cluster_size) + 
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Haplotype", col = "Cluster") +
-      theme_bw(20) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
-
-# Certainly genome-1
-cluster.16.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(16)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Certainly genome-1
-cluster.1.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(1)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Annotate the labeled data frame with what's possible here
-updated.haplotype.df = updated.haplotype.df %>%
-  mutate(Background = case_when(SNP %in% cluster.16.snps ~ "genome-1",
-                                SNP %in% cluster.1.snps ~ "genome-1",
-                                TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(SNP %in% cluster.16.snps ~ "genome-1-C3",
-                               SNP %in% cluster.1.snps ~ "genome-1-C4",
-                               TRUE ~ Haplotype)) 
-
-```
-
-Now, cluster 19 needs a little more rectifying. I think cluster 19 is two to three separate but related haplotypes. 
-
-```{r Cluster nineteen SNPs, fig.align='center', fig.width=10, fig.height=5}
-
-cluster.19.snps = twentyfive.percent.or.more.clusters.df %>% 
+# Genome-2
+cluster.4.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(19)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Cluster the SNPs
-cluster.19.clusters.df = cluster.snps(list.of.snps = cluster.19.snps, 
-                                      snp.df = expanded.df, 
-                                      n.clusters = 3)
-
-# Plot the clusters
-cluster.19.clusters.df %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP)) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      facet_wrap(~cluster_size) + 
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Haplotype", col = "Cluster") +
-      theme_bw(18) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
-
-# Unknown 
-cluster.19.1.snps = cluster.19.clusters.df %>% 
-  filter(cluster %in% c(1)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Genome-1
-cluster.19.2.snps = cluster.19.clusters.df %>% 
+# Genome-2
+cluster.5.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(2)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Genome-1
-cluster.19.3.snps = cluster.19.clusters.df %>% 
-  filter(cluster %in% c(3)) %>% 
+# Genome-2
+cluster.6.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(20)) %>% 
   pull(SNP) %>% 
   unique(.)
 
+# Genome-2
+cluster.7.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(5)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# ? 
+cluster.8.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(7)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# ? 
+cluster.9.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(4)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+  
 # Annotate the labeled data frame with what's possible here
 updated.haplotype.df = updated.haplotype.df %>%
-  mutate(Background = case_when(SNP %in% cluster.19.1.snps ~ "unknown",
-                                SNP %in% cluster.19.2.snps ~ "genome-1",
-                                SNP %in% cluster.19.3.snps ~ "genome-1",
+  mutate(Background = case_when(SNP %in% probably.fixed.snps ~ "fixed",
+                                SNP %in% cluster.1.snps ~ "genome-1",
+                                SNP %in% cluster.2.snps ~ "genome-1",
+                                SNP %in% cluster.3.snps ~ "genome-1",
+                                SNP %in% cluster.4.snps ~ "genome-2",
+                                SNP %in% cluster.5.snps ~ "genome-2",
+                                SNP %in% cluster.6.snps ~ "genome-2",
+                                SNP %in% cluster.7.snps ~ "genome-2",
+                                SNP %in% cluster.8.snps ~ "unknown",
+                                SNP %in% cluster.9.snps ~ "unknown",
                                 TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(SNP %in% cluster.19.1.snps ~ "genome-1-C5",
-                               SNP %in% cluster.19.2.snps ~ "genome-1-C6",
-                               SNP %in% cluster.19.3.snps ~ "genome-1-C7",
-                               TRUE ~ Haplotype)) 
-
+  mutate(Haplotype = case_when(SNP %in% probably.fixed.snps ~ "fixed",
+                                SNP %in% cluster.1.snps ~ "cluster 1",
+                                SNP %in% cluster.2.snps ~"cluster 2",
+                                SNP %in% cluster.3.snps ~"cluster 3",
+                                SNP %in% cluster.4.snps ~ "cluster 4",
+                                SNP %in% cluster.5.snps ~ "cluster 5",
+                                SNP %in% cluster.6.snps ~ "cluster 6",
+                                SNP %in% cluster.7.snps ~ "cluster 7",
+                                SNP %in% cluster.8.snps ~ "cluster 8",
+                                SNP %in% cluster.9.snps ~ "cluster 9",
+                                TRUE ~ Haplotype)) 
 
 ```
 
-Finally, cluster 4. These mutations probably can't be haplotyped with this method because they are mostly found in the Frontal Cortext 2 and missing everywhere else. I would hazard a guess that these are mutations on the background of genome-1-1, but this would need to be proven with read information. 
+What clusters are left? There are three with a single mutation. Also, there are lots of mutations in the frontal cortex at high frequency. 
 
-```{r Cluster four SNPs, fig.align='center', fig.width=8, fig.height=8}
+None of these single mutations are all the important. There are some mutations that are probably in the 3' and 5' UTR. The other mutation is probably Synonymous, but it's in P/V/C, so it could interrupt another reading frame. 
 
-cluster.4.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(4)) %>% 
-  pull(SNP) %>% 
-  unique(.)
+```{r Single Mutations, fig.align='center', fig.width=12, fig.height=6}
 
-# Clusters with very clear correlations 
+sublonal.so.far = updated.haplotype.df %>% 
+  filter(Haplotype == "subclonal") %>% 
+  pull(SNP)
+
 twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(4)) %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP)) +
-      geom_line(data = filter(twentyfive.percent.or.more.clusters.mean, cluster %in% c(4)), aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+  filter(SNP %in% sublonal.so.far) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(data = filter(twentyfive.percent.or.more.clusters.df, SNP %in% sublonal.so.far),
+                aes(x = factor(Tissue, levels = tissue_order), y = AF, group = SNP, col = (cluster)), size = 1) +
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
       facet_wrap(~cluster_size) + 
       scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
       xlab("Tissue") + 
@@ -450,6 +398,7 @@ twentyfive.percent.or.more.clusters.df %>%
       theme_bw(20) +
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
+
 ```
 
 ### Haplotypes found between 25% and 5% 
@@ -495,19 +444,17 @@ twentyfive.percent.or.fewer.clusters.df %>%
 
 ```
 
-
-These all looks fairly promising...
-
 ```{r Promising low-frequency clusters, fig.align='center', fig.width=19, fig.height=10 }
 
-promising.subclonal.clusters = c(10, 12, 14, 18, 2)
+promising.subclonal.clusters = c(10, 12, 14, 18, 2, 5)
 
 twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% promising.subclonal.clusters) %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
       geom_line(aes(group = SNP)) +
-      geom_line(data = filter(twentyfive.percent.or.fewer.clusters.mean, cluster %in% promising.subclonal.clusters), aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+      geom_line(data = filter(twentyfive.percent.or.fewer.clusters.mean, cluster %in% promising.subclonal.clusters), 
+                aes(x = factor(Tissue, levels = tissue_order), y = AF, group = 1, col = (cluster)), size = 1) +
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
       facet_wrap(~cluster_size) + 
       scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
       xlab("Tissue") + 
@@ -519,76 +466,54 @@ twentyfive.percent.or.fewer.clusters.df %>%
 
 
 # Unknown 
-low.freq.10.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+cluster.10.snps = twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% c(10)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Unknown
-low.freq.12.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+cluster.11.snps = twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% c(12)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Unknown
-low.freq.14.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+cluster.12.snps = twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% c(14)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Unknown
-low.freq.18.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+cluster.13.snps = twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% c(18)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Unknown
-low.freq.2.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(2)) %>% 
+# Genome-1
+cluster.14.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(2,5)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Annotate the labeled data frame with what's possible here
 updated.haplotype.df = updated.haplotype.df %>%
-  mutate(Background = case_when(SNP %in% low.freq.10.snps ~ "unknown",
-                                SNP %in% low.freq.12.snps ~ "unknown",
-                                SNP %in% low.freq.14.snps ~ "unknown",
-                                SNP %in% low.freq.18.snps ~ "unknown",
-                                SNP %in% low.freq.2.snps ~ "unknown",
+  mutate(Background = case_when(SNP %in% cluster.10.snps ~ "unknown",
+                                SNP %in% cluster.11.snps ~ "unknown",
+                                SNP %in% cluster.12.snps ~ "unknown",
+                                SNP %in% cluster.13.snps ~ "unknown",
+                                SNP %in% cluster.14.snps ~ "genome-1",
                                 TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(SNP %in% low.freq.10.snps ~ "unknown-C3",
-                               SNP %in% low.freq.12.snps ~ "unknown-C4",
-                               SNP %in% low.freq.14.snps ~ "unknown-C5",
-                               SNP %in% low.freq.18.snps ~ "unknown-C6",
-                               SNP %in% low.freq.2.snps ~ "unknown-C7",
+  mutate(Haplotype = case_when(SNP %in% cluster.10.snps ~ "cluster 10",
+                               SNP %in% cluster.11.snps ~ "cluster 11",
+                               SNP %in% cluster.12.snps ~ "cluster 12",
+                               SNP %in% cluster.13.snps ~ "cluster 13",
+                               SNP %in% cluster.14.snps ~ "cluster 15",
                                TRUE ~ Haplotype)) 
 
 ```
 
 
-```{r fig.width=19, fig.height=10}
-
-twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(6, 5, 16)) %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP)) +
-      geom_line(data = filter(twentyfive.percent.or.fewer.clusters.mean, cluster %in% c(6, 5, 16)), aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      facet_wrap(~cluster_size) + 
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Haplotype", col = "Cluster") +
-      theme_bw(20) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
-
-```
-
 ## What's left to cluster? 
-
-There are still a good number of mutations that need to be clustered. About 300. However, over half of these can't physically be haplotyped because they are too low frequency. Several of these are also probably only in a single sample. 
 
 ```{r Whats remaining, message=FALSE, warning=FALSE, fig.align='center', fig.width= 5, fig.height=5}
 
@@ -631,138 +556,11 @@ updated.haplotype.df %>%
 
 ```
 
-# What positions should be haplotyped? 
-
-Using the information from what's been haplotyped using this method, what's the best region to attempt to haplotype? 
-
-```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
-
-# Import genome annotations
-annotations.df = read_csv(annotations.filepath)
-
-# Get the interval positions for these genes 
-N = annotations.df %>% dplyr::filter(Locus == "N")
-P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
-M = annotations.df %>% dplyr::filter(Locus == "M")
-F. = annotations.df %>% dplyr::filter(Locus == "F")
-H = annotations.df %>% dplyr::filter(Locus == "H")
-L = annotations.df %>% dplyr::filter(Locus == "L")
-
-# Add gene names to the variants
-updated.haplotype.df = updated.haplotype.df %>% 
-  mutate(Gene = case_when(POS < N$Start ~ "3'UTR",
-                          POS > L$Stop ~ "5'UTR", 
-                          TRUE ~ Gene_Name)) 
-
-tissue_colors = c("#ef476f","#ffd166","#06d6a0","#118ab2","#073b4c", "#DDA0DD")
-
-# Tissue order
-tissue_order = c("Frontal Cortex 1", 
-  "Frontal Cortex 3", 
-  "Frontal Cortex 2", 
-  "Temporal Lobe", 
-  "Parietal Lobe",
-  "Occipital Lobe",
-  "Hippocampus",
-  "Internal Capsule", 
-  "Cerebellum",
-  "Cerebellum Nucleus",
-  "Midbrain", 
-  "UBS",
-  "Brain Stem")
-
-
-```
-
-
-```{r Genome Labeled Mutations, warning=FALSE, message=FALSE, fig.align='center', fig.width=18, fig.height=12}
-
-updated.haplotype.df %>% 
-  filter(Background %in% c("genome-1", "genome-2")) %>% 
-  ggplot(aes(x = POS, y = factor(Tissue, levels = rev(tissue_order)))) +
-    geom_point(aes(col = Background), shape = 108, size = 6) +
-    xlab("Position") +
-    # Annotations of genes #
-    # Nucleoprotein
-    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
-    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 10) +
-    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 14 ,
-                   alpha = .1, fill = "dodgerblue2", size = .1) +  
-    # P/V/C
-    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "yellow3", col = "black", size = .1) +
-    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 10) +
-    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "yellow3", size = .1) +
-    # Matrix protein
-    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
-    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 10)  +
-    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "#FF7F00", size = .1) +
-    # Fusion protein
-    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
-    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .25, label = "F", family = "helvetica", size = 10) +
-    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "#6A3D9A", size = .1) +
-    # Hemagluttinin
-    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "green4", col = "black", size = .1) +
-    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 10) +
-    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 14,
-               alpha = .1, fill = "green4", size = .1) +
-    # Large protein
-    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
-    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 10) +
-    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "#E31A1C", size = .1) +
-    scale_color_manual(values = c("#307EC2", "#B63F3E", "grey")) +
-    theme_classic() +
-    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
-    theme(legend.position="bottom", legend.box = "horizontal") +
-    theme(legend.box.background = element_rect(colour = "black")) +
-    theme(text=element_text(size=24)) + 
-    theme(axis.text.x = element_text(size=28)) + 
-    theme(axis.title.x = element_text(size=30)) + 
-    theme(plot.title = element_text(hjust = 0.5))  +
-    theme(axis.title.y = element_blank()) +
-    scale_x_continuous(limits=c(0,16000)) +
-    theme(legend.position = "bottom") 
-
-  
-```
-
 ```{r}
-write_csv(updated.haplotype.df, "../../results/spatial/labeled_subhaplotypes.csv")
-```
-
-```{r fig.align='center', fig.width=18, fig.height=12}
-
-# SNP as column and Allele frequency as row
-frequency.by.snp = updated.haplotype.df %>% 
-  filter(!Background %in% c("genome-1", "genome-2")) %>% 
-  select(AF, SNP, Tissue) %>% 
-  pivot_wider(names_from = SNP, values_from = AF, values_fill = 0)  %>% 
-  remove_rownames %>% 
-  column_to_rownames(var = "Tissue")
 
 
-brain.pca = prcomp(frequency.by.snp, center = TRUE, scale. = TRUE)
-
-brain.pca$x
-
-brain.pca$rotation
-
-brain.pca$center
 
 ```
-
-
-
-What's a good measure of distance between the samples?
 
 ## END
 
