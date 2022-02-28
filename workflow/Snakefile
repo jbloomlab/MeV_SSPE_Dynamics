@@ -45,7 +45,8 @@ rule all:
     input: 
         join(config['variant_dir'], "variants.csv"),
         join(config['haplotype_dir'], "haplotypes.csv"),
-        join(config['spatial_dir'], "bottleneck.csv"), 
+        # join(config['spatial_dir'], "bottleneck.csv"), 
+        join(config['split_dir'], "genotyped.csv"),
         join(config['coverage_dir'], "merged.depth")
 
       
@@ -66,3 +67,4 @@ include: "rules/call-variants.smk"
 include: "rules/download-tools.smk"
 include: "rules/call-haplotypes.smk"
 include: "rules/calculate-coverage.smk"
+include: "rules/split-reads.smk"
