@@ -1,0 +1,259 @@
+---
+title: "6. Connect Subclonal Haplotypes"
+author: "Will Hannon"
+date: "3/16/2022"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is take the subclonal haplotypes that have been identified so far and determine how they are related to one another. In other words, which haplotypes arise on the background of another haplotype? The ultimate goal is to construct something like a Mueller plot, by with space as the x-axis instead of time. 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+
+packages = c("tidyverse")
+## Check that packages are installed, if not, install them
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+# Data from lofreq and varscan labeled with subclonal haplotypes
+updated.data = "../../results/variants/clustered_variants.csv"
+
+# Haplotypes parsed from CliqueSNV
+haplotype.data = "../../results/haplotypes/haplotypes.csv"
+
+# Import the sample data
+sample.data = "../../config/samples.csv"
+
+# Annotations 
+annotations.filepath = "../../config/annotations.csv"
+
+## ==== File paths output data ==== ##
+
+# Path to save the figures for lab meeting 
+output.path = "../../results/spatial"
+
+```
+
+```{r Import and Format Data, warning=F, message=F, echo=T}
+
+# Upload the variants
+updated.df = read_csv(updated.data, show_col_types = FALSE)
+
+haplotypes.label = updated.df %>% 
+  select(SNP, Haplotype, Background) %>% 
+  distinct()
+
+# Expand the mutations to have a frequency for every tissue.
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Get the mean frequency of the major genomes 
+tissue.mean = updated.df %>%  
+  filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF.mean = mean(AF, na.rm = TRUE), 
+            SD = sd(AF, na.rm = TRUE),
+            N = n()) %>% 
+  mutate(SE = SD / sqrt(N),
+         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
+         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
+  rename("AF" = AF.mean, "Genotype" = Haplotype)
+
+```
+
+
+```{r Plotting Variables}
+
+haplotype.order = c("cluster 1",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11",
+                    "cluster 12",
+                    "cluster 13",
+                    "cluster 14", 
+                    "genome-1-1")
+  
+
+# Tissue order ~ relative to position in the brain. 
+tissue_order = c( "Frontal Cortex 1", 
+                  "Frontal Cortex 3", 
+                  "Frontal Cortex 2", 
+                  "Temporal Lobe", 
+                  "Parietal Lobe",
+                  "Occipital Lobe",
+                  "Hippocampus",
+                  "Internal Capsule", 
+                  "Cerebellum",
+                  "Cerebellum Nucleus",
+                  "Midbrain", 
+                  "UBS",
+                  "Brain Stem")
+
+
+```
+
+## Connecting the Clusters 
+
+To connect the clusters, I'll use the pigeonhole principal to see which must be connected based on their frequency in each compartment. 
+
+```{r All Current Clusters, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
+
+haplotype.mean = expanded.df %>% 
+  group_by(Tissue, Haplotype, Background) %>% 
+  summarize(AF = mean(AF))
+
+haplotype.mean %>% 
+  filter(!Haplotype %in% c("fixed", "both", "subclonal", "genome-1", "genome-2")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_point(aes(group = Haplotype, col = Haplotype, shape = Background), size = 5, position = position_jitter(width = .15), alpha = 0.5) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      # facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+
+First, it's clear that `cluster 9` and `genome-1-1` are opposite and opposed clusters that both originate from a `genome-1` background. Everything on `genome-1` orignates on one of these two backgrounds. 
+
+```{r Genome-1 Ancestors, fig.align='center', fig.width=19, fig.height=10}
+
+haplotype.mean %>% 
+  filter(Haplotype %in% c("genome-1-1", "cluster 9")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_point(aes(group = Haplotype, col = Haplotype, shape = Background), size = 5, alpha = 0.5) + 
+      geom_line(aes(group = Haplotype, col = Haplotype, shape = Background), size = 1.5) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+
+`cluster 11` looks like it could be on the background of `cluster 1`. 
+
+```{r Cluster 11 and Cluster 1, fig.align='center', fig.width=19, fig.height=10}
+
+haplotype.mean %>% 
+  filter(Haplotype %in% c("cluster 11", "cluster 1")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_point(aes(group = Haplotype, col = Haplotype, shape = Background), size = 5, alpha = 0.5) + 
+      geom_line(aes(group = Haplotype, col = Haplotype, shape = Background), size = 1.5) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+
+`cluster 3` looks like it could be on the background of `cluster 2`
+
+```{r Cluster 3 and Cluster 2, fig.align='center', fig.width=19, fig.height=10}
+
+haplotype.mean %>% 
+  filter(Haplotype %in% c("cluster 3", "cluster 2")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_point(aes(group = Haplotype, col = Haplotype, shape = Background), size = 5, alpha = 0.5) + 
+      geom_line(aes(group = Haplotype, col = Haplotype, shape = Background), size = 1.5) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+
+```{r Cluster 13 and Cluster 9, fig.align='center', fig.width=19, fig.height=10}
+
+haplotype.mean %>% 
+  filter(Haplotype %in% c("cluster 12", "cluster 13", "cluster 1", "cluster 9", "cluster 11")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_point(aes(group = Haplotype, col = Haplotype, shape = Background), size = 5, alpha = 0.5) + 
+      geom_line(aes(group = Haplotype, col = Haplotype, shape = Background), size = 1.5) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+
+
+
+```{r Genome-2 Ancestors, fig.align='center', fig.width=19, fig.height=10}
+
+haplotype.mean %>% 
+  filter(!Haplotype %in% c("fixed", "both", "subclonal", "genome-1", "genome-2")) %>% 
+  filter(Background == "genome-2") %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_point(aes(group = Haplotype, col = Haplotype), size = 5, alpha = 0.5) + 
+      geom_line(aes(group = Haplotype, col = Haplotype, shape = Background), size = 1.5) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      # facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+

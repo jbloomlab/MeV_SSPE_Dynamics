@@ -1,11 +1,19 @@
 ---
-title: "Evaluate CliqueSNV Haplotypes"
+title: "4. Evaluate CliqueSNV Haplotypes"
 author: "Will Hannon"
-date: "1/27/2022"
-output: html_document
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
 ---
 
-The goal of this notebook is to look at the haplotypes outputted by `CliqueSNV` with different parameters over different regions of the genome. I want to determine which parameters are optimal for a given set of tissues. I also want to see how well the tool performs generally. Ideally, I can use the output of this tool to stitch together a set of haplotypes for inference. 
+The goal of this notebook is to look at the haplotyped output from `CliqueSNV` with different parameters over different regions of the genome. I want to determine which parameters are optimal for a given set of tissues. I also want to see how well the tool performs generally. Ideally, I can use the output of this tool to stitch together a set of haplotypes for phylogenetic inference. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -18,7 +26,7 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ## List of all packages needed
 
-packages = c("tidyverse", "UpSetR", "ComplexHeatmap", "cluster")
+packages = c("tidyverse", "gtools")
 ## Check that packages are installed, if not, install them
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
@@ -29,18 +37,12 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
 
-```{r Inputs, include=FALSE}
+```{r Inputs, echo=T}
 
 ## ==== File paths input data ==== ##
 
-# Data from lofreq and varscan and ivar
-variant.data = "../../results/variants/variants.csv"
-
-# Data from lofreq and varscan labeled with G1 and G2 mutations
-labeled.data = "../../results/spatial/final_variants.csv"
-
 # Data from lofreq and varscan labeled with subclonal haplotypes
-updated.data = "../../results/spatial/labeled_subhaplotypes.csv"
+updated.data = "../../results/variants/clustered_variants.csv"
 
 # Haplotypes parsed from CliqueSNV
 haplotype.data = "../../results/haplotypes/haplotypes.csv"
@@ -61,14 +63,13 @@ output.path = "../../results/spatial"
 
 ## Evaluate CliqueSNV Haplotypes
 
-I first tried to cut the genome in 3000 bp chunks with 2000 bp overlaps. I did this with five different values for minimum O22 count (`t` in `CliqueSNV`) `[20, 40, 80, 120, 360]` and four different values minimum haplotype fraction (`tf` in `CliqueSNV`) `[0.02, 0.05, 0.1, 0.25]`. All of these combinations  resulted in a significant fraction of haplotypes that were verifiably false, i.e. haplotypes that contained two mutually exclusive SNPs. There was no clear correlation between values of `t` and `tf` and the fraction of false haplotypes. This led me to suspect that the specificity issue was the result of the size of the region being haplotyped, not the parameters. I re-did this for smaller regions of 500 bp with 250 bp overlaps and two values for `t` (10, and 100) and one value for `tf` (0.05).
+I first tried to cut the genome in 3000 bp chunks with 2000 bp overlaps. I did this with five different values for minimum O22 count (`t` in `CliqueSNV`) `[20, 40, 80, 120, 360]` and four different values minimum haplotype fraction (`tf` in `CliqueSNV`) `[0.02, 0.05, 0.1, 0.25]`. All of these combinations  resulted in a significant fraction of haplotypes that were verifiably false, i.e. haplotypes that contained two mutually exclusive SNPs. There was no clear correlation between values of `t` and `tf` and the fraction of false haplotypes over the size of regions I choose. This led me to suspect that the specificity issue was the result of the size of the region being haplotyped, not the parameters. I re-did this for smaller regions of 500 bp with 250 bp overlaps and two values for `t` (10, and 100) and one value for `tf` (0.05).
 
-```{r Process for Haplotyping, warning=F, message=F}
+```{r Process for Haplotyping, warning=F, message=F, echo=T}
 
-# Upload the main variant calling files
-updated.df = read_csv(updated.data)
-labeled.df = read_csv(labeled.data)
-  
+# Upload the variants
+updated.df = read_csv(updated.data, show_col_types = FALSE)
+
 haplotypes.label = updated.df %>% 
   select(SNP, Haplotype, Background) %>% 
   distinct()
@@ -83,7 +84,7 @@ expanded.df = updated.df %>%
   left_join(., haplotypes.label, by = "SNP") 
 
 # Get the mean frequency of the major genomes 
-tissue.mean = updated.df %>% 
+tissue.mean = updated.df %>%  
   filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
   group_by(Tissue, Haplotype) %>% 
   summarize(AF.mean = mean(AF, na.rm = TRUE), 
@@ -96,7 +97,7 @@ tissue.mean = updated.df %>%
 
 
 # Join the haplotyping information to the variant calling data frame. 
-haplotype_df = read_csv(haplotype.data) %>% 
+haplotype_df = read_csv(haplotype.data, show_col_types = FALSE) %>% 
   mutate(SNP = paste0(REF, POS, ALT), 
          Interval = paste(Start, Stop, sep = "-"),
          Parameter_Combination = paste(`T`, TF, Start, Stop, sep = "-")) %>% 
@@ -106,13 +107,11 @@ haplotype_df = read_csv(haplotype.data) %>%
 
 ### Are there haplotypes that are verifiably false? 
 
-I consider a haplotype that is "false" as a haplotype with two mutually exclusive SNPs. I define mutually exclusive SNPs as those which are defined as primary G1 or G2 SNPs or SNPs that have been classied as G1 or G2 while clustering subclonal mutations. 
+I consider a haplotype that is "false" as a haplotype with two mutually exclusive SNPs. I define mutually exclusive SNPs as those which are defined as primary G1 or G2 SNPs or SNPs that have been classified as G1 or G2 while clustering subclonal mutations. 
 
 ```{r Verifiably False Haplotypes}
 
-# Calculating some value of percision
 # (n haplotypes with G1 and G2) / (n haplotypes with only G1 or G2)
-
 verified.haplotypes.df = haplotype_df %>% 
   # Only get the mutations that were haplotyped
   filter(!is.na(HAPID)) %>%
@@ -120,7 +119,7 @@ verified.haplotypes.df = haplotype_df %>%
   filter(Background %in% c("genome-1", "genome-2")) %>%
   # Group by the uniquely haplotyped samples and params
   group_by(Tissue, `T`, TF, Interval, HAPID, Background) %>% 
-  # Count the number of SNPs that fall into each catagory 
+  # Count the number of SNPs that fall into each category 
   count() %>% 
   pivot_wider(names_from = Background, values_from = n, values_fill = 0) %>% 
   mutate(Obsv = `genome-1` + `genome-2`) %>% 
@@ -140,7 +139,7 @@ false.haplotypes = verified.haplotypes.df %>%
 
 print(paste("There are only", round(false.haplotypes$fraction_false * 100, digits = 2), "percent of total haplotypes with genome-1 and genome-2 mutations that are verifiably false."))
 
-# The issues are more or less in the same region. What's wrong with this region?
+# The issues are more or less in the same region. What's wrong with this region - maybe too many mutations?
 verified.haplotypes.df %>% 
   filter(`T` == 10) %>% 
   filter(Haplotype == "mixed") %>% 
@@ -163,7 +162,7 @@ The smaller regions work *much* better as an approach to accurately call haploty
 ```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
 
 # Import genome annotations
-annotations.df = read_csv(annotations.filepath)
+annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
 
 # Get the interval positions for these genes 
 N = annotations.df %>% dplyr::filter(Locus == "N")
@@ -192,9 +191,10 @@ tissue_order = c("Frontal Cortex 1",
 
 
 ```
+
 I doesn't seem like the problem is a coverage issue. Aside from the fact that Cerebellum has less relative coverage to other samples, the is nothing special about this particular region. 
 
-```{r Coverage, warning=F, message=F, fig.width=18, fig.height=6}
+```{r Coverage, warning=F, message=F, fig.align='center', fig.width=14, fig.height=5, echo=F}
 
 coverage.df = read.table("../../results/coverage/merged.depth", header = T) %>% 
   mutate(Position = (Stop + Start)/2) 
@@ -204,6 +204,7 @@ coverage.df %>%
   ggplot(aes(x = Position, y = Depth, col = Accession)) +
     geom_line(size = 1.5)  +
     facet_wrap(~Accession, nrow = 1) + 
+    ylab("Read Depth") +
     xlab("Position") +
     annotate("rect", xmin = 3049, xmax = 4549, ymin = .5, ymax = max(coverage.df$Depth) ,
                    alpha = .1, fill = "dodgerblue2", size = .1) +  
@@ -235,136 +236,453 @@ haplotype_df %>%
     theme_bw(18)
 
 ```
+We won't include these intervals and haplotypes in subsequent analyses since we know that they're false.
 
-It's not super clear to me why this mutation would be mis-annotated? 
-
-```{r Tricky Mutation, fig.align='center', fig.width=8, fig.height=6}
-
-# Plot the clusters
-labeled.df %>% 
-  filter(SNP == "C4502T") %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP)) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      facet_wrap(~SNP) + 
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Haplotype", col = "Cluster") +
-      theme_bw(16) +
-      theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
+```{r False Regions, echo=T}
+dont.include = false.haplotypes.to.explore %>% 
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>% 
+  pull(cliqueSNV_haplotype)
 ```
 
+## Looking at Exisiting Clusters
 
-# Interesting Clusters? 
+So far, it seems like this version of `CliqueSNV` work *alright*, with the caveat that we don't really know how to judge this other than by comparing it to other, worse performing parameters. 
 
-So far, it seems like this version of `CliqueSNV` work *alright*, with the caveat that we don't really know how to judge this other than by comparing it to previous, worse runs. 
+Now, let's look at all of the mutations grouped with each of the subclonal clusters that we already identified. This could help us link some of these haplotypes together and identify haplotypes on the background of these already classified haplotypes.  
 
-My next questions is whether I can identify clusters of mutations that seem reasonably like haplotypes. Also, can I Identify the background of already known clusters?
+```{r Subclonal Haplotypes, echo=T}
 
-```{r}
+subclonal.clusters = haplotype_df %>% 
+  filter(grepl('cluster', Haplotype)) %>% 
+  pull(Haplotype) %>% 
+  unique() %>% 
+  mixedsort()
 
-# Plot the clusters
-haplotype_df %>% 
-  filter(`T` == 10) %>% 
-  filter(Background == "subclonal") %>% 
-  group_by(Tissue, Interval, HAPID) %>% 
-  count() %>% arrange(-n)
+t = 10
+tf = 0.05
 
-```
+subclonal.plots.list = list()
 
-```{r Look for Haplotypes, fig.align='center', fig.width=15, fig.height=10}
-
+for (i in 1:length(subclonal.clusters)) {
   
-
-# Plot the clusters
-hap.snps = haplotype_df %>% 
-  filter(`T` == 10) %>% 
-  filter(Tissue == "Frontal Cortex 2") %>% 
-  filter(Interval == "4049-4549") %>% 
-  filter(HAPID == 2) %>% 
-  pull(SNP)
+  cluster = subclonal.clusters[i]
   
+  haplotypes.to.search = haplotype_df %>% 
+    filter(`T` == t & TF == tf & !is.na(HAPID)) %>% 
+    filter(Haplotype == cluster) %>% 
+    mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>% 
+    filter(!(cliqueSNV_haplotype %in% dont.include)) %>% 
+    pull(cliqueSNV_haplotype) %>% 
+    unique()
   
-# Plot the clusters
-expanded.df %>% 
-  filter(SNP %in% hap.snps) %>%
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP, col = Background)) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      # facet_wrap(~SNP) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Haplotype", col = "Cluster") +
-      theme_bw(16) +
-      theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
-
-
-```
-
-```{r Function to Cluster SNPs by Frequency }
-
-cluster.snps <- function(list.of.snps, snp.df, n.clusters) {
+  plot = haplotype_df %>% 
+    filter(`T` == t & TF == tf & !is.na(HAPID)) %>% 
+    mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>% 
+    filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+    ggplot(aes(x = POS, y = AF, col = Haplotype, shape = Background)) + 
+      geom_point(size = 2.5) + 
+      facet_wrap(~(Tissue)) + 
+      theme_bw(18)
   
-  # SNP as column and Allele frequency as row
-  frequency.by.snp = snp.df %>% 
-    filter(SNP %in% list.of.snps) %>% 
-    select(AF, SNP, Tissue) %>% 
-    pivot_wider(names_from = SNP, values_from = AF, values_fill = 0) %>% 
-    select(!Tissue) 
-  
-  # Calculate R between every pair of columns while handling NAs 
-  snp.correlation = cor(frequency.by.snp, use="pairwise.complete.obs")
-  
-  # Convert to distance (positive corr is close to 0)
-  snp.dist = as.dist(1 - snp.correlation)
-  
-  # Create k-medoids clustering with n clusters
-  snp.kmedoids = pam(snp.dist, n.clusters) 
-  kclusters = snp.kmedoids$cluster
-  
-  # Convert to a data frame
-  kclusters.df = data.frame(SNP = names(kclusters), cluster = kclusters)
-
-  # Assign the clusters to the original data frame
-  kmedoids.SNPs = snp.df %>% 
-    filter(SNP %in% list.of.snps) %>% 
-    left_join(., kclusters.df, by = "SNP") %>% 
-    mutate(cluster = if_else(is.na(cluster), "no cluster", as.character(cluster)))
-  
-  n.clusters.per.snp = kmedoids.SNPs %>% 
-    select(SNP, cluster) %>%
-    distinct() %>% 
-    group_by(cluster) %>% 
-    count() %>% 
-    mutate(cluster_size = paste0(cluster, " (", n, " snps in cluster)"))
-  
-  return(left_join(kmedoids.SNPs, n.clusters.per.snp, by = "cluster"))
+  subclonal.plots.list[[i]] = plot
   
 }
 
 ```
+### Cluster 1 
 
+There are no additional subclonal mutations identified with `cluster 1` mutations. 
+```{r Cluster 1, fig.align='center', fig.width=16, fig.height=8}
 
-```{r Tsting, fig.align='center', fig.width=15, fig.height=10}
+subclonal.plots.list[[1]]
 
-cluster.snps(snp.df = expanded.df, list.of.snps = hap.snps, n.clusters = 6) %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
-      geom_line(aes(group = SNP)) +
-      geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      facet_wrap(~cluster_size) + 
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Haplotype", col = "Cluster") +
-      theme_bw(20) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
+```
+### Cluster 2
+
+It looks like `cluster 3` might be on the background of `cluster 2`! 
+```{r Cluster 2, fig.align='center', fig.width=16, fig.height=8}
+
+subclonal.plots.list[[2]]
 
 ```
 
+### Cluster 3
+
+`cluster 3` appears to be on the background of `cluster 2`, and there could be a subclonal mutation (`C11173G`) on the background of `cluster 3` in the `UBS`.
+```{r Cluster 3, fig.align='center', fig.width=16, fig.height=8}
+
+subclonal.plots.list[[3]]
+
+```
+```{r Cluster 3 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 3") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2", "genome-1-1")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+
+
+```
+
+### Cluster 4
+
+`cluster 4` appears to have a handful of subclonal mutations unique to the parietal lobe.
+```{r Cluster 4, fig.align='center', fig.width=16, fig.height=8}
+
+subclonal.plots.list[[4]]
+  
+```
+```{r Cluster 4 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 4") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2", "genome-1-1")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+
+```
+
+### Cluster 5
+
+`cluster 5` Looks like it has one subclonal mutations that could be on it's background in the `Frontal Cortex 2` sample. 
+```{r Cluster 5, fig.align='center', fig.width=16, fig.height=8}
+
+subclonal.plots.list[[5]]
+
+```
+
+```{r Cluster 5 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 5") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2", "genome-1-1")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+
+
+```
+
+### Cluster 6 
+
+Nothing super interesting for `cluster 6`. 
+```{r Cluster 6, fig.align='center', fig.width=16, fig.height=8}
+
+subclonal.plots.list[[6]]
+
+```
+
+### Cluster 7 
+
+Same for `cluster 7`, nothing super interesting here. 
+```{r Cluster 7, fig.align='center', fig.width=16, fig.height=8}
+
+subclonal.plots.list[[7]]
+
+```
+
+### Cluster 8 
+
+`cluster 8` is interesting because it seems like it's probably fixed on `genome-2`. There are some subclonal mutations that also appear fixed on `genome-2` if `Clique-SNV` is to be believed. 
+```{r Cluster 8, fig.align='center', fig.width=16, fig.height=8}
+
+subclonal.plots.list[[8]]
+
+```
+```{r Cluster 8 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 8") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2", "genome-1-1")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+
+```
+
+### Cluster 9 
+
+`cluster 9` is really interesting, unsurprisingly. This cluster is pretty much fixed on `genome-1` in the `Frontal Cortex 2` samples, but it's at much lower frequency in the rest of the brain. This represents an early divergence in `genome-1`. It seems like `cluster 13` and `cluster 14` might be related to this haplotype, but I would take that with a grain of salt given that `genome-1-1` also shows up, and that should be mutually exclusive. 
+
+It's likely that the mutations that got grouped with `cluster 9` but show up on reads with `genome-1-1` could be mislabled as `cluster 9`. This needs more investigation.
+```{r Cluster 9, fig.align='center', fig.width=16, fig.height=10}
+
+subclonal.plots.list[[9]]
+
+```
+
+```{r Cluster 9 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 9") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+
+```
+
+### Cluster 10 
+
+Nothing interesting about `cluster 10`
+```{r Cluster 10, fig.align='center', fig.width=16, fig.height=10}
+
+subclonal.plots.list[[10]]
+
+```
+
+### Cluster 11
+
+Nothing interesting about `cluster 11`
+```{r Cluster 11, fig.align='center', fig.width=16, fig.height=10}
+
+subclonal.plots.list[[11]]
+
+```
+
+### Cluster 12
+
+`cluster 12` is interesting because it looks like it's on the background of quite an extensive set of subclonal mutations, and it might be grouped with `cluster 13`. These subclonal mutations are probably on the background of `cluster 12`. 
+```{r Cluster 12, fig.align='center', fig.width=16, fig.height=10}
+
+subclonal.plots.list[[12]]
+
+```
+```{r Cluster 12 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 12") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+
+
+```
+
+### Cluster 13
+
+`cluster 13` is a similar deal.. 
+```{r Cluster 13, fig.align='center', fig.width=16, fig.height=10}
+
+subclonal.plots.list[[13]]
+
+```
+
+```{r Cluster 13 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 13") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+
+
+```
+
+### Cluster 14
+
+`cluster 14` is looking similarly crazy to `cluster 9` and `cluster 13`. There is something to be resolved here. 
+```{r Cluster 14, fig.align='center', fig.width=16, fig.height=10}
+
+subclonal.plots.list[[14]]
+
+```
+
+```{r Cluster 14 subclonal, fig.align='center', fig.width=16, fig.height=10}
+
+haplotypes.to.search = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  filter(Haplotype == "cluster 13") %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(!(cliqueSNV_haplotype %in% dont.include)) %>%
+  pull(cliqueSNV_haplotype) %>%
+  unique()
+
+snps = haplotype_df %>%
+  filter(`T` == t & TF == tf & !is.na(HAPID)) %>%
+  mutate(cliqueSNV_haplotype = paste(Tissue, Interval, HAPID, sep = "-")) %>%
+  filter(cliqueSNV_haplotype %in% haplotypes.to.search) %>%
+  filter(!Haplotype %in% c("both", "fixed", "genome-1", "genome-2")) %>%
+  pull(SNP) %>%
+  unique()
+
+expanded.df %>%
+  filter((SNP %in% snps)) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+    geom_line(aes(group = SNP, col = Haplotype)) +
+    geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
+    scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    labs(fill="Haplotype", col = "Cluster") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12))
+
+```

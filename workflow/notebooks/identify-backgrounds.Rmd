@@ -1,0 +1,484 @@
+---
+title: "2. Identify Backgrounds"
+author: "Will Hannon"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to identify mutations that are found on the same background or haplotype. I'll do this by clustering mutations in every tissue by their frequency and identifying groups of SNPs that move together across tissue samples (i.e. are likely on the same molecules) with kmedoids clustering. 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+
+packages = c("tidyverse", "ComplexHeatmap", "cluster")
+## Check that packages are installed, if not, install them
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  
+  install.packages(packages[!installed_packages])
+}
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Input, echo=T}
+
+## ==== File paths input data ==== ##
+
+# Variants that were filtered and corrected in `quality-control.Rmd`
+variant.data = "../../results/variants/filtered_variants.csv"
+
+# Import the sample data
+sample.data = "../../config/samples.csv"
+
+# Annotations for the standard Measles ORFs ~ for making pretty figures.
+annotations.filepath = "../../config/annotations.csv"
+
+```
+
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+# Path to save the figures for lab meeting 
+output.path = "../../results/variants"
+if (!dir.exists(output.path)) {
+  dir.create(file.path(output.path), showWarnings = FALSE)
+}
+
+```
+
+## Distribution of Mutations
+
+```{r Read in Data, echo=T, warning=F, message=F}
+
+selected.variants.df = read_csv(variant.data, show_col_types = FALSE)
+head(selected.variants.df)
+
+```
+
+What are the distribution of SNPs in the Measles genome in each tissue? This will help to identify the regions of the genome in which we can most confidently assign mutations to specific genetic backgrounds with read support. This will be relevant after we cluster mutations by frequencies below.
+
+```{r Annotations, message=FALSE, warning=FALSE}
+
+# Import genome annotations
+annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
+
+# Get the interval positions for these genes 
+N = annotations.df %>% dplyr::filter(Locus == "N")
+P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
+M = annotations.df %>% dplyr::filter(Locus == "M")
+F. = annotations.df %>% dplyr::filter(Locus == "F")
+H = annotations.df %>% dplyr::filter(Locus == "H")
+L = annotations.df %>% dplyr::filter(Locus == "L")
+
+# Add gene names to the variants
+selected.variants.df = selected.variants.df %>% 
+  mutate(Gene = case_when(POS < N$Start ~ "3'UTR",
+                          POS > L$Stop ~ "5'UTR", 
+                          TRUE ~ Gene_Name)) 
+
+tissue_colors = c("#ef476f","#ffd166","#06d6a0","#118ab2","#073b4c","#DDA0DD")
+
+# Tissue order - roughly by the location in the brain 
+tissue_order = c("Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Frontal Cortex 2", 
+  "Temporal Lobe", 
+  "Parietal Lobe",
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Cerebellum",
+  "Cerebellum Nucleus",
+  "Midbrain", 
+  "UBS",
+  "Brain Stem")
+
+
+```
+
+```{r Mutation Distribution, warning=F, message=F, fig.align='center', fig.width=18, fig.height=12}
+
+selected.variants.df %>% 
+  ggplot(aes(x = POS, y = factor(Tissue, levels = rev(tissue_order)))) +
+    geom_point(shape = 108, size = 6, color = "black") +
+    xlab("Position") +
+  
+    # == Annotations of genes == #
+  
+    # Nucleoprotein
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
+    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 10) +
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 14 ,
+                   alpha = .1, fill = "dodgerblue2", size = .1) +  
+    # P/V/C
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "yellow3", col = "black", size = .1) +
+    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 10) +
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "yellow3", size = .1) +
+    # Matrix protein
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
+    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 10)  +
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#FF7F00", size = .1) +
+    # Fusion protein
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
+    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .25, label = "F", family = "helvetica", size = 10) +
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#6A3D9A", size = .1) +
+    # Hemagluttinin
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "green4", col = "black", size = .1) +
+    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 10) +
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 14,
+               alpha = .1, fill = "green4", size = .1) +
+    # Large protein
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
+    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 10) +
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#E31A1C", size = .1) +
+    theme_classic() +
+    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+    theme(legend.position="bottom", legend.box = "horizontal") +
+    theme(legend.box.background = element_rect(colour = "black")) +
+    theme(text=element_text(size=24)) + 
+    theme(axis.text.x = element_text(size=28)) + 
+    theme(axis.title.x = element_text(size=30)) + 
+    theme(plot.title = element_text(hjust = 0.5))  +
+    theme(axis.title.y = element_blank()) +
+    scale_x_continuous(limits=c(0,16000)) +
+    theme(legend.position = "none") 
+
+```
+
+## What are the two major backgrounds? 
+
+We know from experiments and preliminary observations that there are two sets of mutations that are present in every tissue sample. These mutations are the background for every other mutation in the genome. Because they are in every sample and their frequencies are anti-correlated, we should be able to identify these mutations by clustering them based on their co/anti-correlation. 
+
+```{r Shared Mutations, warning = F, message = F, echo=T}
+
+# All thirteen of the tissue samples 
+tissues = selected.variants.df %>% 
+  pull(Tissue) %>% 
+  unique()
+
+# Get the mutations in every single tissue
+all.mutations = selected.variants.df %>% 
+  count(SNP) %>%
+  filter(n == length(tissues)) %>%
+  pull(SNP)
+
+print(paste("There are", length(all.mutations), "mutations in every tissue sample"))
+
+```
+
+I'll make a correlation matrix between all of the SNPs that are found in every tissue and aren't fixed in every tissue (four mutations are fixed in every tissue but not included in the SSPE reference). 
+
+```{r SNP Correlation, warning=F, message=F, echo=T, fig.align='center', fig.width=11, fig.height=9}
+
+# Remove the fixed mutations and get the long form of mutations in all samples. *I must not have caught there in the reference
+fixed.in.all = selected.variants.df %>% 
+  filter(SNP %in% all.mutations) %>%
+  filter(AF >= 0.95) %>% 
+  group_by(SNP) %>% 
+  count() %>% 
+  filter(n == length(tissues)) %>%
+  pull(SNP)
+
+print(paste("There are", length(fixed.in.all), "fixed mutations in every tissue sample that aren't in the reference."))
+
+# Convert these mutations to long form where each column is a SNP and the row is it's frequency.
+frequency.by.column = selected.variants.df %>% 
+  filter(SNP %in% all.mutations) %>%
+  filter(!SNP %in% fixed.in.all) %>% 
+  select(AF, SNP, Tissue) %>% 
+  pivot_wider(names_from = SNP, values_from = AF, values_fill = 0) %>% 
+  select(!Tissue) 
+
+# Calculate R between every pair of columns handling NAs as a correlation matrix
+SNP.correlation = cor(frequency.by.column, use="pairwise.complete.obs")
+
+Heatmap(SNP.correlation , 
+        rect_gp = gpar(col = "white", lwd = 1),
+        column_names_gp = grid::gpar(fontsize = 10),
+        row_names_gp = grid::gpar(fontsize = 10),
+        show_column_dend = FALSE, 
+        show_row_dend = FALSE)
+```
+
+Most are strongly correlated, but some aren't so correlated with one another. Here is a histogram showing that. I'll filter out those SNPs that aren't so well correlated with one another while identifying the mutations on Genome-1 and Genome-2. 
+
+```{r Correlation Histogram, echo=T, fig.align='center', fig.width=6, fig.height=4}
+
+# Get the R-squared from the correlation matrix
+SNP.correlation.squared = SNP.correlation^2
+
+# Plot the histogram
+strong.corr.df = data.frame(SNP = names(rowMeans(SNP.correlation.squared)), Corr_Mean = rowMeans(SNP.correlation.squared))
+
+strong.corr.df %>% 
+  ggplot(aes(x = Corr_Mean)) +
+    geom_histogram(bins = 40) +
+    geom_vline(xintercept = 0.75, color = "red", linetype = 2) +
+    xlab("R-squared") + 
+    ylab("Count") +
+    theme_bw(15)
+
+```
+
+```{r Filter Correlation, echo=T, warning=F, message=F}
+
+# Take only SNPs with greater than .75 based on the above histogram
+filtered.SNPs = rowMeans(SNP.correlation.squared)[rowMeans(SNP.correlation.squared) >= 0.75]
+
+# Remove the fixed mutations and get the long form
+filtered.SNPs.df = selected.variants.df %>% 
+  filter(!SNP %in% fixed.in.all) %>% 
+  filter(SNP %in% names(filtered.SNPs)) %>% 
+  select(AF, SNP, Tissue) %>% 
+  pivot_wider(names_from = SNP, values_from = AF, values_fill = 0) %>% 
+  select(!Tissue) 
+  
+# Calculate R between every pair of columns handling NAs 
+filtered.SNP.correlation = cor(filtered.SNPs.df, use="pairwise.complete.obs")
+
+# Convert to distrance (postive corr is close to 0)
+filtered.SNP.dist = as.dist(1 - filtered.SNP.correlation)
+
+# Create k-medoids clustering with 8 clusters
+filtered.SNP.kmedoids = pam(filtered.SNP.dist, 3) 
+kclusters = filtered.SNP.kmedoids$cluster
+
+kclusters.df = data.frame(SNP = names(kclusters), cluster = kclusters)
+
+# Assign the clusters to the original dataframe
+kmedoids.SNPs = selected.variants.df %>% 
+  filter(!SNP %in% fixed.in.all) %>% 
+  filter(SNP %in% all.mutations) %>% 
+  left_join(., kclusters.df, by = "SNP") %>% 
+  mutate(cluster = if_else(is.na(cluster), "no cluster", as.character(cluster)))
+
+# Mean of each tissue
+tissue.mean = kmedoids.SNPs %>% 
+  group_by(Tissue, cluster) %>% 
+  summarize(AF = mean(AF))
+
+```
+
+```{r Plot the clusters, fig.align='center', fig.width=14, fig.height=10}
+kmedoids.SNPs %>% 
+  ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+    geom_line(aes(group = SNP)) +
+    geom_line(data = tissue.mean, aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
+    facet_wrap(~cluster) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    theme(legend.position = "none") 
+```
+
+```{r Extract G1/G2, warning=F, message=F, echo=T}
+
+g1.SNPs = kmedoids.SNPs %>% 
+  filter(cluster == 3) %>% 
+  pull(SNP)
+
+sub.g1.SNPs = kmedoids.SNPs %>% 
+  filter(cluster == 2) %>% 
+  pull(SNP)
+
+g2.SNPs = kmedoids.SNPs %>% 
+  filter(cluster == 1) %>% 
+  pull(SNP)
+
+labeled.df = selected.variants.df %>% 
+  filter(!SNP %in% fixed.in.all) %>% 
+  mutate(Background = case_when(SNP %in% g1.SNPs ~ "genome-1", 
+                                SNP %in% g2.SNPs ~ "genome-2",
+                                SNP %in% sub.g1.SNPs ~ "genome-1",
+                                TRUE ~ "subclonal")) %>% 
+  mutate(Haplotype = case_when(SNP %in% g1.SNPs ~ "genome-1", 
+                               SNP %in% g2.SNPs ~ "genome-2",
+                               SNP %in% sub.g1.SNPs ~ "genome-1-1",
+                               TRUE ~ "subclonal"))
+
+# Write these out to a file 
+print(paste("Writing the results to", paste(output.path, "genotyped_variants.csv", sep = "/")))
+write_csv(labeled.df, paste(output.path, "genotyped_variants.csv", sep = "/"))
+
+```
+
+We can look at the relative frequencies of these two haplotypes across the tissues in the brain. 
+
+```{r G1 vs. G2 combined, fig.align='center', fig.width=10, fig.height=8, warning=F, message=F}
+
+genotype_order = c("genome-2", "genome-1")
+genome.colors = c("#307EC2", "#B63F3E")
+
+genotype.plot.df = labeled.df %>% 
+  filter(Haplotype %in% c("genome-1", "genome-2"))  %>% 
+  select(Haplotype, Tissue, AF) %>% 
+  group_by(Haplotype, Tissue) %>% 
+  summarize(AF = mean(AF))
+
+padding = genotype.plot.df %>% 
+  group_by(Tissue) %>% 
+  summarize(Padding = (1 - sum(AF))/2)
+
+genotype.plot.df = genotype.plot.df %>% 
+  left_join(., padding) %>% 
+  mutate(AF = AF + Padding) %>% 
+  select(!Padding)
+
+genotype.plot.df$Haplotype = factor(genotype.plot.df$Haplotype, level = genotype_order)
+  
+genotype.plot.df %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF, fill = Haplotype, group = Haplotype)) + 
+  geom_area() +
+    xlab("Tissue") +
+    ylab("Allele Frequency") +
+    scale_fill_manual(values = genome.colors) +
+    theme_bw(20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+Now, let's revisit the distribution of mutations in the genome colored by the mutations that have been identified as `genome-1` or `genome-2`. 
+
+```{r}
+labeled.df %>%
+  filter(Background %in% c('genome-1', 'genome-2')) %>% 
+  filter(Gene_Name != "M") %>%
+  select(Background, SNP) %>% 
+  distinct() %>% 
+  group_by(Background) %>% 
+  count()
+
+```
+
+
+```{r G1/G2 Distribution, warning=F, message=F, fig.align='center', fig.width=18, fig.height=12}
+
+labeled.df %>% 
+  filter(Background %in% c('genome-1', 'genome-2')) %>% 
+  ggplot(aes(x = POS, y = factor(Tissue, levels = rev(tissue_order)))) +
+    geom_point(aes(col = Background), shape = 108, size = 6) +
+    xlab("Position") +
+    # Annotations of genes #
+    # Nucleoprotein
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
+    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 10) +
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 14 ,
+                   alpha = .1, fill = "dodgerblue2", size = .1) +  
+    # P/V/C
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "yellow3", col = "black", size = .1) +
+    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 10) +
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "yellow3", size = .1) +
+    # Matrix protein
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
+    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 10)  +
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#FF7F00", size = .1) +
+    # Fusion protein
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
+    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .25, label = "F", family = "helvetica", size = 10) +
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#6A3D9A", size = .1) +
+    # Hemagluttinin
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "green4", col = "black", size = .1) +
+    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 10) +
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 14,
+               alpha = .1, fill = "green4", size = .1) +
+    # Large protein
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
+               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
+    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 10) +
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 14 ,
+               alpha = .1, fill = "#E31A1C", size = .1) +
+    scale_color_manual(values = c("#307EC2", "#B63F3E", "grey")) +
+    theme_classic() +
+    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+    theme(legend.position="bottom", legend.box = "horizontal") +
+    theme(legend.box.background = element_rect(colour = "black")) +
+    theme(text=element_text(size=24)) + 
+    theme(axis.text.x = element_text(size=28)) + 
+    theme(axis.title.x = element_text(size=30)) + 
+    theme(plot.title = element_text(hjust = 0.5))  +
+    theme(axis.title.y = element_blank()) +
+    scale_x_continuous(limits=c(0,16000)) +
+    theme(legend.position = "bottom") 
+
+```
+
+## Which mutations don't cluster? 
+
+Some mutations that are present in every tissue aren't correlating well with either the `genome-1` or `genome-2` mutations. Are any of these particularly interesting? 
+
+There are two interesting mutations here in every tissue - a stop codon towards the terminus of F and a mutation in the C-terminal of H. Otherwise, there are three mutations that should probably be 'fixed' relative to the reference. I can update what I call a fixed - or founder mutation. 
+
+```{r Interesting Mutations, warning=F, message=F, fig.align='center', fig.width=8, fig.height=4}
+
+tissue.mean = labeled.df %>% 
+  filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF.mean = mean(AF, na.rm = TRUE), 
+            SD = sd(AF, na.rm = TRUE),
+            N = n()) %>% 
+  mutate(SE = SD / sqrt(N),
+         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
+         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
+  rename("AF" = AF.mean)
+
+kmedoids.SNPs %>%
+  filter(AA_Change %in% c("Gln527*", "Ile8Thr")) %>% 
+  mutate(title = paste(Gene_Name, AA_Change, sep = "-")) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF, group = SNP )) + 
+    geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order),
+                                        ymin=AF-SD,
+                                        ymax=AF+SD,
+                                        group = Haplotype,
+                                        fill = Haplotype), alpha=0.2, colour = NA) +
+    geom_line() + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    facet_wrap(~title) + 
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+
+```
+
+
+
+
