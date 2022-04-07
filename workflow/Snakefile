@@ -19,27 +19,11 @@ configfile: "config/config.yml"
 
 #### ------------------------ Utils ------------------------ ####
 
-def aggregate_csv(csv_list, out_csv):
-    """
-    This function aggregates lists of CSVs from
-    the input of a snakemake rule. It's intended
-    to be used in any aggregation rules throughout 
-    the pipeline. 
-
-    Try/Except to deal with empty CSVs.
-    """
-    valid_csv_list = []
-    for csv in csv_list:
-        try:
-            pd.read_csv(csv)
-            valid_csv_list.append(csv)
-        except: 
-            pass
-    df = pd.concat(map(pd.read_csv, valid_csv_list))
-    df.to_csv(out_csv[0], index = False)
+include: "rules/common.smk"
 
 #### ----------------------- Targets ----------------------- ####
-samples = list(set(pd.read_csv(config['samples']['file'])['Run']))
+SAMPLE_DF = pd.read_csv(config['samples']['file'])
+samples = list(set(SAMPLE_DF['Run']))
 
 rule all:
     input: 

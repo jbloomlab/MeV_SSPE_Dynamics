@@ -4,9 +4,6 @@
 # Email: wwh22@uw.edu
 #
 
-# Read in the samples dataframe.
-SAMPLE_DF = pd.read_csv(config['samples']['file'])
-
 rule fetch_fastq:
     """ 
     Move the fastq files into the results directory and compress them. 

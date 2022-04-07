@@ -216,6 +216,7 @@ def update_reference(bampaths,
                      contig, 
                      threads,
                      fixed_threshold = .95,
+                     n_obsv = 11,
                      minimum_QUAL = 25,
                      minimum_COV = 100):
     """
@@ -241,6 +242,9 @@ def update_reference(bampaths,
         
     fixed_threshold : int
         minimum AF to be considered a fixed mutation.
+
+    n_obsv: int 
+        minimum number of samples to be considered fixed in whole brain.
          
     minimum_QUAL : int
         minimum QUAL score to count base observation at a position.
@@ -274,7 +278,7 @@ def update_reference(bampaths,
     fixed_snps = Counter((pos, alt) for pos, alt in zip(all_fixed_variants_df.POS, all_fixed_variants_df.ALT))
     
     # Get the SNPs deemed to be in enough samples to be included in the updated reference
-    consensus_snps = [snp for snp, count in fixed_snps.items() if count >= 12]
+    consensus_snps = [snp for snp, count in fixed_snps.items() if count >= n_obsv]
     
     # Update the reference sequence 
     ref_seq = get_ref_sequence(refpath)
@@ -308,6 +312,7 @@ def main():
                     contig, 
                     threads,
                     fixed_threshold = .95,
+                    n_obsv = 12,
                     minimum_QUAL = 25,
                     minimum_COV = 100)
 
