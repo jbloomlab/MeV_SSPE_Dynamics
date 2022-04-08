@@ -68,6 +68,7 @@ haplotype_dir: results/haplotypes
 coverage_dir: results/coverage
 spatial_dir: results/spatial
 split_dir: results/split
+bridging_dir: results/bridging
 
 # ++ Config Directoties ++ #
 tools: config/tools

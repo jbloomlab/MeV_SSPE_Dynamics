@@ -312,7 +312,7 @@ def main():
                     contig, 
                     threads,
                     fixed_threshold = .95,
-                    n_obsv = 12,
+                    n_obsv = 11,
                     minimum_QUAL = 25,
                     minimum_COV = 100)
 
