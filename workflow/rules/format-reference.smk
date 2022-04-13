@@ -55,7 +55,8 @@ rule make_sspe_reference:
     """
     input: bam = expand(join(config['align_dir'], "{accession}", "{accession}.sorted.bam"), accession = samples),
            genome = join(config['ref_dir'], 'MeVChiTok.fa')
-    output: join(config['ref_dir'], 'MeVChiTok-SSPE.fa')
+    output: fasta = join(config['ref_dir'], 'MeVChiTok-SSPE.fa'),
+            csv = join(config['ref_dir'], 'SSPE_consensus_snps.csv')
     params: contig = "MeVChiTok",
     threads: config['threads']['max_cpu']
     conda: '../envs/pysam.yml'

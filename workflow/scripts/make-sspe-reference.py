@@ -252,6 +252,11 @@ def update_reference(bampaths,
     minimum_COV : int
         minimum DP score to count base observation at a position.
 
+    Returns
+    -------
+    pd.DataFrame:
+        DataFrame of the position and alternative allele for variants in the SSPE reference.
+
     """
     
     # Go through and call variants in each bam file.
@@ -279,7 +284,8 @@ def update_reference(bampaths,
     
     # Get the SNPs deemed to be in enough samples to be included in the updated reference
     consensus_snps = [snp for snp, count in fixed_snps.items() if count >= n_obsv]
-    
+    consensus_snp_df = pd.DataFrame(consensus_snps, columns =['POS', 'ALT'])
+
     # Update the reference sequence 
     ref_seq = get_ref_sequence(refpath)
 
@@ -289,7 +295,8 @@ def update_reference(bampaths,
     # Write the updated reference out to a fasta file. 
     with open(outpath, "w") as outfile:
         outfile.write(">" + "MeVChiTok" + "\n" + "".join(ref_seq) + "\n")
-        
+    
+    return consensus_snp_df
     print("Done!")
 
 
@@ -300,13 +307,15 @@ def main():
     # Get the path to the reference genome.
     refpath = str(snakemake.input.genome)
     # Get the path to the output multi-fasta file. 
-    outpath = str(snakemake.output)
+    outpath = str(snakemake.output.fasta)
+    # Get the path for consensus mutation csv
+    outcsv = str(snakemake.output.csv)
     # Get the contig
     contig = str(snakemake.params.contig)
     # Get the number of threads to use
     threads = int(snakemake.threads)
 
-    update_reference(bampaths, 
+    sspe_consensus_snps = update_reference(bampaths, 
                     refpath,
                     outpath,
                     contig, 
@@ -315,6 +324,8 @@ def main():
                     n_obsv = 11,
                     minimum_QUAL = 25,
                     minimum_COV = 100)
+
+    sspe_consensus_snps.to_csv(outcsv, index=False)
 
 if __name__ == '__main__':
     main()
