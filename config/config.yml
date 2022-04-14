@@ -69,6 +69,7 @@ coverage_dir: results/coverage
 spatial_dir: results/spatial
 split_dir: results/split
 bridging_dir: results/bridging
+notebook_dir: results/notebooks
 
 # ++ Config Directoties ++ #
 tools: config/tools

@@ -1,6 +1,8 @@
 ---
 title: "1. Quality Control"
-author: "Will Hannon"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
   highlight: tango
@@ -27,13 +29,13 @@ knitr::opts_chunk$set(echo = FALSE)
 ## List of all packages needed
 
 packages = c("tidyverse", "UpSetR")
-## Check that packages are installed, if not, install them
-installed_packages <- packages %in% rownames(installed.packages())
-if (any(installed_packages == FALSE)) {
-  
-  install.packages(packages[!installed_packages])
-}
-## Packages loading
+# ## Check that packages are installed, if not, install them
+# installed_packages <- packages %in% rownames(installed.packages())
+# if (any(installed_packages == FALSE)) {
+#   
+#   install.packages(packages[!installed_packages])
+# }
+# ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
@@ -43,7 +45,9 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Variant data parsed from from lofreq, ivar, and varscan VCFs
-variant.data = "../../results/variants/variants.csv"
+# variant.data = "../../results/variants/variants.csv"
+
+variant.data = snakemake@input[[1]]
 
 ```
 
@@ -52,10 +56,13 @@ variant.data = "../../results/variants/variants.csv"
 ## ==== File paths output data ==== ##
 
 # Path to save the figures for lab meeting 
-output.path = "../../results/variants/"
-if (!dir.exists(output.path)) {
-  dir.create(file.path(output.path), showWarnings = FALSE)
-}
+# output.path = "../../results/variants/filtered_variants.csv"
+
+output.path = snakemake@params[["outcsv"]]
+
+# if (!dir.exists(output.path)) {
+#   dir.create(file.path(output.path), showWarnings = FALSE)
+# }
 
 ```
 
@@ -193,9 +200,11 @@ print(paste("In total, there are", length(unique(pull(selected.variants.df, SNP)
 
 ```{r Write out selected variants, echo=T}
 
-print(paste("Writing out the results to", paste(output.path, "filtered_variants.csv", sep = "/")))
+print(paste("Writing out the results to", output.path))
 
-write_csv(selected.variants.df, paste(output.path, "filtered_variants.csv", sep = "/"))
+# write_csv(selected.variants.df, paste(output.path, "filtered_variants.csv", sep = "/"))
+
+write_csv(selected.variants.df, output.path)
 
 ```
 
