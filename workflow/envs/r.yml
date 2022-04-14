@@ -9,3 +9,4 @@ dependencies:
   - r-gridgraphics
   - r-ggrepel
   - r-rmutil
+  - r-upsetr
