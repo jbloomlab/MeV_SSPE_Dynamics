@@ -58,6 +58,8 @@ rule make_sspe_reference:
     output: fasta = join(config['ref_dir'], 'MeVChiTok-SSPE.fa'),
             csv = join(config['ref_dir'], 'SSPE_consensus_snps.csv')
     params: contig = "MeVChiTok",
+            nobsv = 11, 
+            minfreq = .90
     threads: config['threads']['max_cpu']
     conda: '../envs/pysam.yml'
     script: '../scripts/make-sspe-reference.py'

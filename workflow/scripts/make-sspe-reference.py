@@ -312,6 +312,10 @@ def main():
     outcsv = str(snakemake.output.csv)
     # Get the contig
     contig = str(snakemake.params.contig)
+    # Minimum number of tissues to be fixed in the brain
+    observations = int(snakemake.params.nobsv)
+    # Minimum frequency to be considered fixed
+    minimum_frequency = float(snakemake.params.minfreq)
     # Get the number of threads to use
     threads = int(snakemake.threads)
 
@@ -320,8 +324,8 @@ def main():
                     outpath,
                     contig, 
                     threads,
-                    fixed_threshold = .95,
-                    n_obsv = 11,
+                    fixed_threshold = minimum_frequency,
+                    n_obsv = observations,
                     minimum_QUAL = 25,
                     minimum_COV = 100)
 
