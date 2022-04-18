@@ -14,4 +14,16 @@ rule quality_control:
     script: "../notebooks/quality-control.Rmd"
 
 
-    
+rule identify_backgrounds:
+    input:
+        join(config['variant_dir'], "filtered_variants.csv"),
+        join(config['notebook_dir'], "quality-control.html")
+    output:
+        join(config['notebook_dir'], "identify-backgrounds.html")
+    params: 
+        outcsv=join(config['variant_dir'], "genotyped_variants.csv"),
+        annotations=config['MeVChiTok']['annotations'],
+        samples=config['samples']['file']
+    conda: "../envs/r.yml"
+    script: "../notebooks/identify-backgrounds.Rmd"
+

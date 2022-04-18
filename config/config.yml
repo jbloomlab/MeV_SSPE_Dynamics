@@ -27,6 +27,7 @@ MeVChiTok:
   ref: config/MeVChiTok.fa
   gff: ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/854/845/GCF_000854845.1_ViralProj15025/GCF_000854845.1_ViralProj15025_genomic.gff.gz
   contig: MeVChiTok
+  annotations: config/annotations.csv
 
 # Human reference genome
 human:

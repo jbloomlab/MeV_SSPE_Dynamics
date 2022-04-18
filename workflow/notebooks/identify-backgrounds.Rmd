@@ -1,6 +1,8 @@
 ---
 title: "2. Identify Backgrounds"
-author: "Will Hannon"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
   highlight: tango
@@ -27,12 +29,14 @@ knitr::opts_chunk$set(echo = FALSE)
 ## List of all packages needed
 
 packages = c("tidyverse", "ComplexHeatmap", "cluster")
+
 ## Check that packages are installed, if not, install them
-installed_packages <- packages %in% rownames(installed.packages())
-if (any(installed_packages == FALSE)) {
-  
-  install.packages(packages[!installed_packages])
-}
+# installed_packages <- packages %in% rownames(installed.packages())
+# if (any(installed_packages == FALSE)) {
+#   
+#   install.packages(packages[!installed_packages])
+# }
+
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
@@ -43,13 +47,19 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Variants that were filtered and corrected in `quality-control.Rmd`
-variant.data = "../../results/variants/filtered_variants.csv"
+# variant.data = "../../results/variants/filtered_variants.csv"
+variant.data = snakemake@input[[1]]
+
 
 # Import the sample data
-sample.data = "../../config/samples.csv"
+# sample.data = "../../config/samples.csv"
+sample.data = snakemake@params[["samples"]]
+
 
 # Annotations for the standard Measles ORFs ~ for making pretty figures.
-annotations.filepath = "../../config/annotations.csv"
+# annotations.filepath = "../../config/annotations.csv"
+annotations.filepath = snakemake@params[["annotations"]]
+
 
 ```
 
@@ -58,10 +68,12 @@ annotations.filepath = "../../config/annotations.csv"
 ## ==== File paths output data ==== ##
 
 # Path to save the figures for lab meeting 
-output.path = "../../results/variants"
-if (!dir.exists(output.path)) {
-  dir.create(file.path(output.path), showWarnings = FALSE)
-}
+# output.path = "../../results/variants/"
+# if (!dir.exists(output.path)) {
+#   dir.create(file.path(output.path), showWarnings = FALSE)
+# }
+
+output.path = snakemake@params[["outcsv"]]
 
 ```
 
@@ -195,11 +207,10 @@ print(paste("There are", length(all.mutations), "mutations in every tissue sampl
 
 ```
 
-I'll make a correlation matrix between all of the SNPs that are found in every tissue and aren't fixed in every tissue (four mutations are fixed in every tissue but not included in the SSPE reference). 
+Although the reference seems to capture nearly every fixed mutation, there are four that aren't included in the reference. These are all in one continuous four nucleotide stretch in Nucleoprotein. I don't know why these don't get captured in the reference assembly, but it likely has to do with issues with the alignment of these reads. 
 
-```{r SNP Correlation, warning=F, message=F, echo=T, fig.align='center', fig.width=11, fig.height=9}
-
-# Remove the fixed mutations and get the long form of mutations in all samples. *I must not have caught there in the reference
+```{r Remaining Fixed Mutations, warning=F, message=F, echo=T}
+# Remove the fixed mutations and get the long form of mutations in all samples. 
 fixed.in.all = selected.variants.df %>% 
   filter(SNP %in% all.mutations) %>%
   filter(AF >= 0.95) %>% 
@@ -209,6 +220,13 @@ fixed.in.all = selected.variants.df %>%
   pull(SNP)
 
 print(paste("There are", length(fixed.in.all), "fixed mutations in every tissue sample that aren't in the reference."))
+print(paste("Fixed but not in reference:", fixed.in.all))
+```
+
+I'll make a correlation matrix between all of the SNPs that are found in every tissue and aren't fixed in every tissue. 
+
+```{r SNP Correlation, warning=F, message=F, echo=T, fig.align='center', fig.width=11, fig.height=9}
+
 
 # Convert these mutations to long form where each column is a SNP and the row is it's frequency.
 frequency.by.column = selected.variants.df %>% 
@@ -301,6 +319,8 @@ kmedoids.SNPs %>%
     theme(legend.position = "none") 
 ```
 
+These 'no cluster' mutations are simply mutations in every single tissue that don't neatly fit on G1 or G2. These likely belong to some other haplotype on the background of these two ancestral haplotypes. 
+
 ```{r Extract G1/G2, warning=F, message=F, echo=T}
 
 g1.SNPs = kmedoids.SNPs %>% 
@@ -316,7 +336,7 @@ g2.SNPs = kmedoids.SNPs %>%
   pull(SNP)
 
 labeled.df = selected.variants.df %>% 
-  filter(!SNP %in% fixed.in.all) %>% 
+  filter(!SNP %in% fixed.in.all) %>% # excluding these four odd 'fixed mutations'. These are better explored in IGV
   mutate(Background = case_when(SNP %in% g1.SNPs ~ "genome-1", 
                                 SNP %in% g2.SNPs ~ "genome-2",
                                 SNP %in% sub.g1.SNPs ~ "genome-1",
@@ -325,10 +345,17 @@ labeled.df = selected.variants.df %>%
                                SNP %in% g2.SNPs ~ "genome-2",
                                SNP %in% sub.g1.SNPs ~ "genome-1-1",
                                TRUE ~ "subclonal"))
+```
+
+```{r Write Out, warning=F, message=F, echo=T}
 
 # Write these out to a file 
-print(paste("Writing the results to", paste(output.path, "genotyped_variants.csv", sep = "/")))
-write_csv(labeled.df, paste(output.path, "genotyped_variants.csv", sep = "/"))
+
+# print(paste("Writing the results to", paste(output.path, "genotyped_variants.csv", sep = "/")))
+# write_csv(labeled.df, paste(output.path, "genotyped_variants.csv", sep = "/"))
+
+print(paste("Writing the results to", output.path))
+write_csv(labeled.df, output.path)
 
 ```
 
@@ -369,18 +396,6 @@ genotype.plot.df %>%
 ```
 
 Now, let's revisit the distribution of mutations in the genome colored by the mutations that have been identified as `genome-1` or `genome-2`. 
-
-```{r}
-labeled.df %>%
-  filter(Background %in% c('genome-1', 'genome-2')) %>% 
-  filter(Gene_Name != "M") %>%
-  select(Background, SNP) %>% 
-  distinct() %>% 
-  group_by(Background) %>% 
-  count()
-
-```
-
 
 ```{r G1/G2 Distribution, warning=F, message=F, fig.align='center', fig.width=18, fig.height=12}
 
@@ -441,6 +456,43 @@ labeled.df %>%
 
 ```
 
+How many mutations are there on each background? 
+
+```{r Mutations per genotype}
+
+# All mutations 
+all.mutations.included = labeled.df %>%
+  filter(Background %in% c('genome-1', 'genome-2')) %>% 
+  select(Background, SNP) %>% 
+  distinct() %>% 
+  group_by(Background) %>% 
+  count()
+
+# Excluding the mutations in Matrix
+excluding.only.M = labeled.df %>%
+  filter(Background %in% c('genome-1', 'genome-2')) %>% 
+  filter(Gene_Name != "M") %>%
+  select(Background, SNP) %>% 
+  distinct() %>% 
+  group_by(Background) %>% 
+  count()
+
+print(paste("There are",
+            filter(all.mutations.included, Background == "genome-1")$n,
+            "mutations in genome-1 and",
+            filter(all.mutations.included, Background == "genome-2")$n,
+            "mutations in genome-2"))
+
+print(paste("There are",
+            filter(excluding.only.M, Background == "genome-1")$n,
+            "mutations in genome-1 and",
+            filter(excluding.only.M, Background == "genome-2")$n,
+            "mutations in genome-2 when you exclude Matrix"))
+
+```
+
+It's really interesting that there are literally no mutations in genome-2 in Matrix and the majority of the mutations fixed in genome-1 are in Matrix. This is very important observation about the haplotypes since Matrix likely accumulates mutations at a different rate than the rest of the genome since there is no selective pressure to maintain matrix. 
+
 ## Which mutations don't cluster? 
 
 Some mutations that are present in every tissue aren't correlating well with either the `genome-1` or `genome-2` mutations. Are any of these particularly interesting? 
@@ -460,7 +512,7 @@ tissue.mean = labeled.df %>%
          Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
   rename("AF" = AF.mean)
 
-kmedoids.SNPs %>%
+kmedoids.SNPs %>% 
   filter(AA_Change %in% c("Gln527*", "Ile8Thr")) %>% 
   mutate(title = paste(Gene_Name, AA_Change, sep = "-")) %>% 
   ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF, group = SNP )) + 
