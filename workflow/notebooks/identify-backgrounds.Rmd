@@ -48,7 +48,7 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 # Variants that were filtered and corrected in `quality-control.Rmd`
 # variant.data = "../../results/variants/filtered_variants.csv"
-variant.data = snakemake@input[[1]]
+variant.data = snakemake@params[["incsv"]]
 
 
 # Import the sample data

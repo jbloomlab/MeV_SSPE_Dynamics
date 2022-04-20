@@ -1,6 +1,8 @@
 ---
-title: "5. Process Bridging Reads"
-author: "Alison Feder"
+title: "4. Genotype Subclonal SNPs"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
   highlight: tango
@@ -13,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to establish a method to genotype SNPs as either belonging to `genome-1` or to `genome-2`. Additionaly, using the same method, we will try to link known haplotypes to one another if there are reads that bridge sites between the haplotypes.
+The goal of this notebook is to establish a method to genotype SNPs as either belonging to `genome-1` or to `genome-2`. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -25,13 +27,14 @@ knitr::opts_chunk$set(echo = FALSE)
 ## ==== Install Required Packages ==== ##
 
 ## List of all packages needed
-
 packages = c("tidyverse", "foreach", "emdbook")
+
 ## Check that packages are installed, if not, install them
-installed_packages <- packages %in% rownames(installed.packages())
-if (any(installed_packages == FALSE)) {
-  install.packages(packages[!installed_packages])
-}
+# installed_packages <- packages %in% rownames(installed.packages())
+# if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
@@ -42,14 +45,32 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Data from lofreq and varscan labeled with subclonal haplotypes
-updated.data = "../../results/variants/clustered_variants.csv"
+# updated.data = "../../results/variants/clustered_variants.csv"
+updated.data = snakemake@params[["incsv"]]
 
 # Counts of SNPs on reads belonging to genome-1 or genome-2
-reads.data = "../../results/split/genotyped.csv"
-
-# Annotations for MeV genes
-annotations.filepath = "../../config/annotations.csv"
+# reads.data = "../../results/bridging/genotyped.csv"
+reads.data = snakemake@input[[1]]
   
+# Annotations for MeV genes
+# annotations.filepath = "../../config/annotations.csv"
+annotations.filepath = snakemake@params[["annotations"]]
+
+```
+
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+# Path to save the figures for lab meeting 
+# output.path = "../../results/variants/"
+# if (!dir.exists(output.path)) {
+#   dir.create(file.path(output.path), showWarnings = FALSE)
+# }
+
+# output.path = "../../results/variants/assigned_variants.csv"
+output.path = snakemake@params[["outcsv"]]
+
 ```
 
 ```{r Import and Format Data, echo = T}
@@ -113,7 +134,7 @@ assignmentsByTau = foreach(tau = taus, .combine = "rbind")%do%{
 
 ```
 
-### G1/G2 assignment for Haplotypes
+## G1/G2 assignment for Haplotypes
 
 What are the `genome1/2` assignments for each identified haplotype for every value of `tau` between `0.00001` and `1`? 
 ```{r Assignments for all Haplotypes, warning=F, message=F, fig.align='center', fig.width=18, fig.height=14}
@@ -150,7 +171,7 @@ assignmentsByTau %>%
 
 ```
 
-### Subclonal SNPs? 
+## Genotype Subclonal SNPs
 
 How does this look for subclonal SNPs? Can we assign most to either `genome-1` or `genome-2`? 
 
@@ -195,7 +216,7 @@ subclonal.assignments = assignmentsByTau %>%
 
 There isn't much of a difference between the assignment of SNPs to `genome-1` or `genome-2` across the MeV genome. 
 
-```{r Subclonal Assignments Positions, warning=F, message=F, fig.align='center', fig.width=18, fig.height=8}
+```{r Subclonal Assignments Positions, warning=F, message=F, fig.align='center', fig.width=10, fig.height=8}
 
 # Import genome annotations
 annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
@@ -270,204 +291,15 @@ left_join(subclonal.assignments, genotyping.df) %>%
 ```
 
 
-## Processing Pairs of SNPs
+```{r Write out the assignments}
 
-We also have counts of reads for all observed pairs of haplotypes for each tissue. The idea is to use these bridging reads to figure out how certain haplotypes are connected. 
+fully.assigned.df = left_join(updated.df, subclonal.assignments, by = "SNP") %>% 
+  rename(Proposed_Background = type) %>% 
+  mutate(Proposed_Background = case_when(Proposed_Background == "G1" ~ "genome-1",
+                                         Proposed_Background == "G2" ~ "genome-2",
+                                         is.na(Proposed_Background) ~ "unknown"))
 
-```{r}
-
-snp.pairs.df = read_csv("../../config/snp_pairs.csv", show_col_types = FALSE)
-
-head(snp.pairs.df)
-
-```
-
-The columns are as follows: `snp_1` is the position of one SNP, `snp_2` is the position of the second SNP, `00` are reads that overlap both positions but have neither SNP, `10` are reads that have only `snp_1`, `01` are reads that have only `snp_2`, and `11` are reads with both SNPs. 
-
-
-```{r Calculate Linked and Forbidden SNPs, echo = T}
-
-tau = 0.02 # Tau, minimum haplotype frequency
-min_obsv = 200 # Minimum number of bridging reads (of any type)
-min.sig = 0.05 # Minimum significance before multiple testing correction
-  
-linked.and.forbidden.df = snp.pairs.df %>% 
-  mutate(total = `00` + `10` + `01` + `11`) %>% 
-  # Multiple testing done by tissue, not polymorphic position
-  group_by(snp_1, snp_2) %>% 
-  # Calculate the probability of being linked
-  mutate(linked = pbinom(`11`, total, tau, lower.tail = F), 
-         linked_sig = linked < min.sig/n()) %>% 
-    # Calculate the probability of being forbidden
-  mutate(forbidden = pbinom(`11`, total, tau, lower.tail = T), 
-         forbidden_sig = forbidden < min.sig/n()) %>% 
-  mutate(linked_sig = ifelse(total == 0, NA, linked_sig),
-         forbidden_sig = ifelse(total == 0, NA, forbidden_sig)) %>% 
-  filter(total > min_obsv) %>% 
-  ungroup()
-
-```
-
-To see if it's possible to link clusters with read support, I'll get all of the bridging reads that overlap polymorphic positions from two distinct clusters or haplotypes. Then I can use the resulting data to uncover any evidence that clusters are joined. 
-
-```{r Get Linked SNPs for all Clusters}
-
-# All combinations of cluster excluding: g1/g2/both/fixed/subclonal (not clustered)
-clusters = updated.df %>% 
-  filter(!Haplotype %in% c("genome-1", "genome-2", "both", "fixed", "subclonal")) %>% 
-  pull(Haplotype) %>% 
-  unique() %>% 
-  combn(., 2)
-
-# For each combination of clusters, get the SNPs covered by bridging reads
-comparison.df = data.frame()
-for (i in 1:ncol(clusters)) {
-  
-  # Get the clusters 
-  cluster.a = clusters[1, i] 
-  cluster.b = clusters[2, i]
-  
-  cluster.a.snps = updated.df %>% 
-    filter(Haplotype == cluster.a) %>% 
-    pull(POS) %>% 
-    unique()
-  
-  cluster.b.snps = updated.df %>% 
-    filter(Haplotype == cluster.b) %>% 
-    pull(POS) %>% 
-    unique()
-  
-  cluster.a.df = linked.and.forbidden.df %>% 
-    filter(snp_1 %in% cluster.a.snps | snp_2 %in% cluster.a.snps) 
-  
-  if (dim(cluster.a.df)[1] == 0) next
-    
-  cluster.b.df = cluster.a.df %>% 
-    filter(snp_1 %in% cluster.b.snps | snp_2 %in% cluster.b.snps) 
-  
-  if (dim(cluster.b.df)[1] == 0) next
-  
-  overlap.df = cluster.b.df %>% 
-    mutate(haplotype_1 = cluster.a,
-           haplotype_2 = cluster.b)
-    
-  comparison.df = rbind(comparison.df, overlap.df)
-  
-}
-
-
-```
-
-
-```{r Percent linked and forbidden, fig.align="center", fig.width=20, fig.height=20}
-
-comparison.df %>% 
-  group_by(haplotype_1, haplotype_2, Tissue) %>% 
-  mutate(linked_perc = (sum(linked_sig) / n()) * 100,
-         forbidden_perc = (sum(forbidden_sig) / n()) * 100) %>% 
-  select(Tissue, haplotype_1, haplotype_2, linked_perc, forbidden_perc) %>% 
-  pivot_longer(cols = c(linked_perc, forbidden_perc), names_to = "Relation", values_to = "Percent") %>% 
-  distinct() %>% 
-  ggplot(aes(x = Tissue, y = Percent, fill = Relation)) + 
-    geom_bar(stat = "identity", position = position_dodge(), size = 1.5) + 
-    facet_grid(cols = vars(haplotype_1), rows = vars(haplotype_2)) +
-    theme_bw()
-
-```
-
-
-```{r}
-comparison.df %>% 
-  filter(haplotype_1 == "cluster 11" | haplotype_2 == "cluster 11") %>% 
-  filter(haplotype_1 == "cluster 1" | haplotype_2 == "cluster 1")
-```
-```{r}
-comparison.df %>% 
-  filter(haplotype_1 == "cluster 12" | haplotype_2 == "cluster 12") %>% 
-  filter(haplotype_1 == "cluster 1" | haplotype_2 == "cluster 1")
-```
-```{r}
-
-cluster.1 = "genome-1-1"
-cluster.2 = "cluster 9"
-
-comparison.df %>% 
-  filter(haplotype_1 == cluster.1 | haplotype_2 == cluster.1) %>% 
-  filter(haplotype_1 == cluster.2 | haplotype_2 == cluster.2) %>% 
-  arrange(-linked_sig)
-
-
-updated.df
-  
-  
-```
-
-It looks like clusters 11 and 12 are not on the background of cluster 1. It seems pretty clear that these are typically forbidden. 
-
-There is another odd feature of these results. It looks like some of the SNPs that are part of cluster 9 are acrtually linked to genome-1-1. This shouldn't be possible - I need to explore this further. 
-
-
-```{r}
-
-# Tissue order ~ relative to position in the brain. 
-tissue_order = c( "Frontal Cortex 1", 
-                  "Frontal Cortex 3", 
-                  "Frontal Cortex 2", 
-                  "Temporal Lobe", 
-                  "Parietal Lobe",
-                  "Occipital Lobe",
-                  "Hippocampus",
-                  "Internal Capsule", 
-                  "Cerebellum",
-                  "Cerebellum Nucleus",
-                  "Midbrain", 
-                  "UBS",
-                  "Brain Stem")
-
-haplotypes.label = updated.df %>% 
-  select(SNP, Haplotype, Background) %>% 
-  distinct()
-
-# Expand the mutations to have a frequency for every tissue.
-expanded.df = updated.df %>% 
-  select(SNP, Tissue, AF) %>% 
-  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
-  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
-  left_join(., select(updated.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
-  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
-  left_join(., haplotypes.label, by = "SNP") 
-
-# Get the mean frequency of the major genomes 
-tissue.mean = updated.df %>%  
-  filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
-  group_by(Tissue, Haplotype) %>% 
-  summarize(AF.mean = mean(AF, na.rm = TRUE), 
-            SD = sd(AF, na.rm = TRUE),
-            N = n()) %>% 
-  mutate(SE = SD / sqrt(N),
-         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
-         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
-  rename("AF" = AF.mean, "Genotype" = Haplotype)
-
-```
-
-
-```{r fig.align="center", fig.width=14, fig.height=8}
-
-updated.df %>% 
-  filter(POS %in% c(3550)) %>%
-  filter(Haplotype %in% ('cluster 9')) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
-      geom_line(aes(group = SNP, col = Haplotype, shape = Background), size = .5) + 
-      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Genotype", col = "Cluster") +
-      theme_bw(20) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12)) 
-
+write_csv(fully.assigned.df, output.path)
 
 ```
 

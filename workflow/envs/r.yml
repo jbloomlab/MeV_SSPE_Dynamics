@@ -12,3 +12,5 @@ dependencies:
   - r-upsetr
   - r-cluster
   - r-tidyverse
+  - r-foreach
+  - r-emdbook

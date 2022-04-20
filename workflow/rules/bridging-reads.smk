@@ -10,11 +10,11 @@ rule genotype_snps:
     """
     input: 
         bam=join(config['realign_dir'], "{accession}", "{accession}.sorted.bam"),
-        snps=join(config['spatial_dir'], "labeled_variants.csv"),
+        snps=join(config['variant_dir'], "genotyped_variants.csv"),
         genome=join(config['index_dir']['samtools'], 'MeVChiTok-SSPE.fa')
     output: 
-        dir=directory(join(config['split_dir'], "{accession}")),
-        csv=join(config['split_dir'], "{accession}", "{accession}.genotyped.csv")
+        dir=directory(join(config['bridging_dir'], "genotyped", "{accession}")),
+        csv=join(config['bridging_dir'], "genotyped", "{accession}", "{accession}.genotyped.csv")
     params:
         contig="MeVChiTok"
     conda: "../envs/pysam.yml"
@@ -25,8 +25,8 @@ rule aggregate_genotype:
     """
     This rule aggregates all of the genotype counts. 
     """
-    input: expand(join(config['split_dir'], "{accession}",  "{accession}.genotyped.csv"), accession = samples)
-    output: join(config['split_dir'], "genotyped.csv")
+    input: expand(join(config['bridging_dir'], "genotyped", "{accession}",  "{accession}.genotyped.csv"), accession = samples)
+    output: join(config['bridging_dir'], "genotyped.csv")
     run: aggregate_csv(input, output) 
 
 
@@ -36,9 +36,9 @@ rule bridging_reads:
     """
     input: 
         bam=join(config['realign_dir'], "{accession}", "{accession}.sorted.bam"),
-        snps=join(config['spatial_dir'], "labeled_variants.csv"),
+        snps=join(config['variant_dir'], "clustered_variants.csv"),
     output: 
-        csv=join(config['bridging_dir'], "{accession}", "{accession}.bridging_reads.csv")
+        csv=join(config['bridging_dir'], "subclonal", "{accession}", "{accession}.bridging_reads.csv")
     conda: "../envs/pysam.yml"
     script: "../scripts/count-bridging-reads.py"
 
@@ -47,7 +47,7 @@ rule aggregate_bridging_reads:
     """
     This rule aggregates the bridging reads across tissues.
     """
-    input: expand(join(config['bridging_dir'], "{accession}",  "{accession}.bridging_reads.csv"), accession = samples)
+    input: expand(join(config['bridging_dir'], "subclonal", "{accession}",  "{accession}.bridging_reads.csv"), accession = samples)
     output: join(config['bridging_dir'], "bridging_reads.csv")
     run: aggregate_csv(input, output) 
 

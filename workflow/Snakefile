@@ -28,11 +28,11 @@ samples = list(set(SAMPLE_DF['Run']))
 rule all:
     input: 
         join(config['variant_dir'], "variants.csv"),
-        join(config['notebook_dir'], "identify-backgrounds.html"),
+        join(config['notebook_dir'], "genotype-subclonal-snps.html"),
         # join(config['haplotype_dir'], "haplotypes.csv"),
         # join(config['spatial_dir'], "bottleneck.csv"), 
-        # join(config['bridging_dir'], "bridging_reads.csv"),
-        # join(config['split_dir'], "genotyped.csv"),
+        join(config['bridging_dir'], "bridging_reads.csv"),
+        join(config['bridging_dir'], "genotyped.csv"),
         join(config['coverage_dir'], "merged.depth")
 
       
@@ -53,5 +53,5 @@ include: "rules/call-variants.smk"
 include: "rules/download-tools.smk"
 include: "rules/call-haplotypes.smk"
 include: "rules/calculate-coverage.smk"
-include: "rules/split-reads.smk"
+include: "rules/bridging-reads.smk"
 include: "rules/process-variants.smk"

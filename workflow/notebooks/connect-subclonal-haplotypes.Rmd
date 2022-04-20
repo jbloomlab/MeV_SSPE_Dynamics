@@ -43,10 +43,7 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Data from lofreq and varscan labeled with subclonal haplotypes
-updated.data = "../../results/variants/clustered_variants.csv"
-
-# Haplotypes parsed from CliqueSNV
-haplotype.data = "../../results/haplotypes/haplotypes.csv"
+updated.data = "../../results/variants/assigned_variants.csv"
 
 # Import the sample data
 sample.data = "../../config/samples.csv"
@@ -57,7 +54,7 @@ annotations.filepath = "../../config/annotations.csv"
 ## ==== File paths output data ==== ##
 
 # Path to save the figures for lab meeting 
-output.path = "../../results/spatial"
+# output.path = "../../results/spatial"
 
 ```
 
@@ -157,7 +154,7 @@ haplotype.mean %>%
 
 ```
 
-First, it's clear that `cluster 9` and `genome-1-1` are opposite and opposed clusters that both originate from a `genome-1` background. Everything on `genome-1` orignates on one of these two backgrounds. 
+First, it's clear that `cluster 9` and `genome-1-1` are opposite and opposed clusters that both originate from a `genome-1` background. Everything on `genome-1` originates on one of these two backgrounds. 
 
 ```{r Genome-1 Ancestors, fig.align='center', fig.width=19, fig.height=10}
 
