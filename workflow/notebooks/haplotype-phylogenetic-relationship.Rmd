@@ -1,0 +1,406 @@
+---
+title: "5. Establish Haplotype Relationship"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to establish the phylogenetic relationship between the haplotypes identified in notebook #4. This will help make a simple phylogenetic tree of the haplotypes in the next notebook. 
+
+To accomplish this, I'm going to use a combination of the 'pigeon-hole principle' on the frequencies of haplotypes in each compartment, as well as the counts of briding reads between haplotypes. 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse", "foreach", "emdbook")
+
+## Check that packages are installed, if not, install them
+# installed_packages <- packages %in% rownames(installed.packages())
+# if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+# Data from lofreq and varscan labeled with subclonal haplotypes
+updated.data = "../../results/variants/assigned_variants.csv"
+
+# Data from the count of bridging reads
+bridging.data = "../../results/bridging/bridging_reads.csv"
+
+# Annotations 
+annotations.filepath = "../../config/annotations.csv"
+
+```
+
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+# Path to save the figures for lab meeting 
+# output.path = "../../results/spatial"
+
+```
+
+We have counts of reads for all observed pairs of haplotypes for each tissue. The idea is to use these bridging reads to figure out how certain haplotypes are connected. 
+
+```{r Import Data, echo=T}
+
+# Assigned SNPs with haplotype labels 
+updated.df = read_csv(updated.data, show_col_types = FALSE)
+
+# Bridging reads
+bridging.df = read_csv(bridging.data, show_col_types = FALSE)
+
+head(bridging.df)
+
+```
+
+The columns are as follows: `snp_1` is the position of one SNP, `snp_2` is the position of the second SNP, `00` are reads that overlap both positions but have neither SNP, `10` are reads that have only `snp_1`, `01` are reads that have only `snp_2`, and `11` are reads with both SNPs. 
+
+```{r Calculate Linked and Forbidden SNPs, echo=T}
+
+taus = lseq(0.005, .5, length.out = 50) # Log spaced values for tau
+min_obsv = 100 # Minimum number of bridging reads (of any type)
+min_snp_obsv = 25 # Minimum number of bridging reads with SNPs
+min.sig = 0.05 # Minimum significance before multiple testing correction
+  
+# Assign to genome for each value of tau
+SNPassignmentsByTau = foreach(tau = taus, .combine = "rbind")%do%{
+
+  bridging.df %>% 
+    mutate(total = `00` + `10` + `01` + `11`) %>% 
+    filter(total >= min_obsv) %>% 
+    filter(((`01` + `11`) >= min_snp_obsv) & ((`10` + `11`) >= min_snp_obsv)) %>% 
+    # Multiple testing done by tissue, not polymorphic position
+    group_by(snp_1, snp_2) %>% 
+    # Calculate the probability of being linked
+    mutate(linked = pbinom(`11`, total, tau, lower.tail = F), 
+           linked_sig = linked < min.sig/n()) %>% 
+      # Calculate the probability of being forbidden
+    mutate(forbidden = pbinom(`11`, total, tau, lower.tail = T), 
+           forbidden_sig = forbidden < min.sig/n()) %>% 
+    mutate(linked_sig = ifelse(total == 0, NA, linked_sig),
+           forbidden_sig = ifelse(total == 0, NA, forbidden_sig)) %>% 
+    ungroup() %>% 
+    mutate(tau = tau)
+
+}
+
+SNPassignmentsByTau %>% 
+  select(!c("total", "linked", "forbidden")) %>% 
+  head()
+
+```
+
+Count the number of tissues in which each pair of SNPs is either linked or forbidden.
+
+```{r Count in each Tissue, echo=T}
+
+SNPassignmentsByTissue = SNPassignmentsByTau %>% 
+  select(snp_1, snp_2, linked_sig, forbidden_sig, tau, Tissue) %>% 
+  group_by(snp_1, snp_2, tau) %>% 
+  mutate(linked = sum(linked_sig),
+         forbidden = sum(forbidden_sig)) %>% 
+  select(!c("Tissue", "linked_sig", "forbidden_sig")) %>% 
+  distinct() %>% 
+  ungroup()
+
+SNPassignmentsByTissue %>% 
+  head()
+
+```
+
+What are the number of SNPs that are linked and forbidden for each pair of haplotypes? We can use this as a resource to confirm possible links based on their frequencies in each compartment.
+
+```{r Reads Bridging Clusters, echo=T}
+
+# All combinations of cluster excluding: g1/g2/both/fixed/subclonal (not clustered)
+clusters = updated.df %>% 
+  filter(!Haplotype %in% c("genome-1", "genome-2", "both", "fixed", "subclonal")) %>% 
+  pull(Haplotype) %>% 
+  unique() %>% 
+  combn(., 2)
+
+# For each combination of clusters, get the SNPs covered by bridging reads
+comparison.df = data.frame()
+for (i in 1:ncol(clusters)) {
+  
+  # Get the clusters for this loop
+  cluster.1 = clusters[1, i] 
+  cluster.2 = clusters[2, i]
+  
+  # == Get the positions of the SNPs in each cluster == #
+  cluster.1.snps = updated.df %>% 
+    filter(Haplotype == cluster.1) %>% 
+    pull(POS) %>% 
+    unique()
+
+  cluster.2.snps = updated.df %>% 
+    filter(Haplotype == cluster.2) %>% 
+    pull(POS) %>% 
+    unique()
+
+  # == Filter the data by SNPs in each cluster == #
+  overlap.df = SNPassignmentsByTissue %>% 
+    filter((snp_1 %in% cluster.1.snps & snp_2 %in% cluster.2.snps) | (snp_1 %in% cluster.2.snps & snp_2 %in% cluster.1.snps)) 
+  
+  if (dim(overlap.df)[1] == 0) next
+  
+  overlap.df = overlap.df %>% 
+    mutate(cluster_1 = if_else(snp_1 %in% cluster.1.snps, cluster.1, cluster.2),
+           cluster_2 = if_else(snp_2 %in% cluster.1.snps, cluster.1, cluster.2))
+
+  comparison.df = rbind(comparison.df, overlap.df)
+  
+}
+
+head(comparison.df)
+
+```
+
+## Haplotypes by Frequency
+
+Can we figure out which haplotypes are most likely to be related based on the frequency? I'll do this with the 'pigeon-hole' principle. 
+
+```{r}
+
+haplotypes.label = updated.df %>% 
+  select(SNP, Haplotype, Background) %>% 
+  distinct()
+
+# Expand the mutations to have a frequency for every tissue.
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Get the mean frequency of the major genomes 
+tissue.mean = updated.df %>%  
+  filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF.mean = mean(AF, na.rm = TRUE), 
+            SD = sd(AF, na.rm = TRUE),
+            N = n()) %>% 
+  mutate(SE = SD / sqrt(N),
+         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
+         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
+  rename("AF" = AF.mean, "Genotype" = Haplotype)
+
+```
+
+```{r Plotting Variables}
+
+# Haplotype order
+haplotype.order = c("cluster 1",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11",
+                    "cluster 12",
+                    "cluster 13",
+                    "cluster 14", 
+                    "genome-1-1")
+  
+
+# Tissue order ~ relative to position in the brain. 
+tissue_order = c( "Frontal Cortex 1", 
+                  "Frontal Cortex 3", 
+                  "Frontal Cortex 2", 
+                  "Temporal Lobe", 
+                  "Parietal Lobe",
+                  "Occipital Lobe",
+                  "Hippocampus",
+                  "Internal Capsule", 
+                  "Cerebellum",
+                  "Cerebellum Nucleus",
+                  "Midbrain", 
+                  "UBS",
+                  "Brain Stem")
+
+# Get the mean of each haplotype
+haplotype.mean = expanded.df %>% 
+  group_by(Tissue, Haplotype, Background) %>% 
+  summarize(AF = mean(AF))
+
+```
+
+
+### Genome-1 Clusters 
+
+```{r Genome-1 Clusters, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
+
+haplotype.mean %>% 
+  filter(!Haplotype %in% c("fixed", "both", "subclonal", "genome-1", "genome-2")) %>% 
+  filter(Background == "genome-1") %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(aes(group = Haplotype, col = Haplotype), alpha = 0.5, size = 2) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+
+There are four possible connections between haplotypes on the background of genome-1: `1 -> 12`, `1 -> 11`, `2 -> 3`, `9 -> 13`. Let's compare these with the bridging reads. 
+
+```{r Clusters 1 and 12, echo=T, fig.align='center', fig.width=10, fig.height=6}
+
+haplotype.mean %>% 
+  filter(Haplotype %in% c("cluster 1", "cluster 12")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(aes(group = Haplotype, col = Haplotype), alpha = 0.5, size = 2) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+snps.that.overlap = comparison.df %>% 
+  filter(cluster_1 %in% c("cluster 1", "cluster 12") & cluster_2 %in% c("cluster 1", "cluster 12"))
+
+SNPassignmentsByTau %>% 
+  filter(snp_1 == 5368 & snp_2 == 5615 | snp_1 == 8346 & snp_2 == 8532 | snp_1 == 8525 & snp_2 == 8532) %>% head()
+
+```
+
+Clusters 1 and 12 are clearly forbidden even though the frequencies look connected. 
+
+```{r Clusters 1 and 11, echo=T, fig.align='center', fig.width=10, fig.height=6}
+
+haplotype.mean %>% 
+  filter(Haplotype %in% c("cluster 1", "cluster 11")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(aes(group = Haplotype, col = Haplotype), alpha = 0.5, size = 2) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+SNPassignmentsByTau %>% 
+  filter(snp_1 == 5368 & snp_2 == 5405 | snp_1 == 2343 & snp_2 == 2543 | snp_1 == 2349 & snp_2 == 2543) %>% head()
+
+# Clusters 11 and 12 are also probably forbidden.
+SNPassignmentsByTau %>% 
+  filter(snp_1 == 4281 & snp_2 == 4304) %>% head()
+
+```
+
+Clusters 1 and 11 are also super clearly forbidden even though the frequencies look connected. Also the one pair that overlaps clusters 11 and 12 are also forbidden.
+
+```{r Clusters 9 and 13, echo=T, fig.align='center', fig.width=10, fig.height=6}
+
+haplotype.mean %>% 
+  filter(Haplotype %in% c("cluster 9", "cluster 13")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(aes(group = Haplotype, col = Haplotype), alpha = 0.5, size = 2) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+clust.9.snps = comparison.df %>% 
+  filter(cluster_1 %in% c("cluster 9", "cluster 13") & cluster_2 %in% c("cluster 9", "cluster 13")) %>% 
+  filter(linked > 0 & (tau < .05 & tau > 0.02)) %>% 
+  filter(cluster_1 %in% "cluster 9") %>% 
+  pull(snp_1) %>%
+  unique()
+
+clust.13.snps = comparison.df %>% 
+  filter(cluster_1 %in% c("cluster 9", "cluster 13") & cluster_2 %in% c("cluster 9", "cluster 13")) %>% 
+  filter(linked > 0 & (tau < .05 & tau > 0.02)) %>% 
+  filter(cluster_1 %in% "cluster 13") %>% 
+  pull(snp_1) %>%
+  unique()
+
+SNPassignmentsByTau %>% 
+  filter(snp_1 %in% clust.9.snps & snp_2 %in% clust.13.snps | (snp_1 %in% clust.13.snps & snp_2 %in% clust.9.snps)) %>% 
+  filter(linked_sig) %>% 
+  filter(Tissue != "Frontal Cortex 2")
+
+```
+
+Clusters 9 and 13 are interesting because, although they are clearly linked in the Frontal cortex, they don't seem to be linked elsewhere. There are few tissues were there is borderline linkage (temporal lobe and FC1/FC3), but this is only at low `taus`. 
+
+### Genome-2 Clusters 
+
+The only haplotype that could reasonable be on the background of other haplotypes is cluster 10. Although, given it's frequency in the UBS, I'd say this is unlikely.
+
+```{r Genome-2 Clusters, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
+
+haplotype.mean %>% 
+  filter(!Haplotype %in% c("fixed", "both", "subclonal", "genome-1", "genome-2")) %>% 
+  filter(Background == "genome-2") %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(aes(group = Haplotype, col = Haplotype, shape = Background), alpha = 0.5, size = 2) + 
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12)) 
+
+```
+```{r Cluster 10, echo=T}
+
+comparison.df %>%
+  filter(cluster_1 == "cluster 10" | cluster_2 == "cluster 10") %>% 
+  arrange(-linked) %>% 
+  head()
+
+```
+
+Cluster 10 isn't on the background of anything. So, the final relationship of the haplotypes currently is: 
+
+![Haplotype Relationship](Cluster-Relationship.png)
+
