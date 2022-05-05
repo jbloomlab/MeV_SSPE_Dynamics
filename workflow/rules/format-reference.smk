@@ -94,3 +94,15 @@ rule samtools_sspe_index:
         samtools faidx {output.fa}
         samtools dict -o {output.idxdict} {output.fa}
         """
+
+
+rule annotate_consensus_mutations:
+    """ Annotate the coding effects of SSPE mutations relative to hybrid reference.
+    """
+    input: 
+        csv=join(config['ref_dir'], 'SSPE_consensus_snps.csv'),
+        gff=join(config['gff_dir'], 'MeVChiTok.gff'),
+        genome=join(config['ref_dir'], 'MeVChiTok.fa')
+    output: join(config['ref_dir'], 'annotated_SSPE_consensus_snps.csv')
+    conda: '../envs/pysam.yml'
+    script: '../scripts/annotate-sspe-reference.py'

@@ -33,7 +33,8 @@ rule all:
         # join(config['spatial_dir'], "bottleneck.csv"), 
         join(config['bridging_dir'], "bridging_reads.csv"),
         join(config['bridging_dir'], "genotyped.csv"),
-        join(config['coverage_dir'], "merged.depth")
+        join(config['coverage_dir'], "merged.depth"),
+        join(config['ref_dir'], 'annotated_SSPE_consensus_snps.csv')
 
       
 rule clean:
