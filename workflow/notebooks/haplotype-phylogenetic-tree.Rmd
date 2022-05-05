@@ -1,0 +1,417 @@
+---
+title: "6. Haplotype Phylogenetic Tree"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to make a phylogenetic tree of the haplotypes identified in the brain. I'll then make a Muller plot of the haplotypes to see how the frequencies of these shift in the brain. 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## List of all packages needed -- non-BioManager installed
+packages = c("tidyverse", "tidytree", "phytools", "knitr", "BiocManager", "ggmuller")
+bio.packages = c("ggtree", "treeio")
+## Check that packages are installed, if not, install them
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+bio_installed_packages <- bio.packages %in% rownames(installed.packages())
+if (any(bio_installed_packages == FALSE)) {
+  BiocManager::install(bio.packages[!bio_installed_packages])
+}
+## Packages loading
+invisible(lapply(c(bio.packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+# Data from lofreq and varscan labeled with subclonal haplotypes
+updated.data = "../../results/variants/assigned_variants.csv"
+
+# Annotations 
+annotations.filepath = "../../config/annotations.csv"
+
+# Phylogenetic tree path
+phylo.data = "../../results/phylogeny/haplotype-sequences.fa.treefile"
+
+```
+
+```{r Import Data, echo=T}
+
+# Assigned SNPs with haplotype labels 
+updated.df = read_csv(updated.data, show_col_types = FALSE)
+
+# Get the background of the haplotypes
+background.label = updated.df %>% 
+  select(Haplotype, Background) %>% 
+  filter(!Haplotype %in% c("subclonal", "genome-2", "genome-1", "genome-1-1", "both")) %>% 
+  mutate(Haplotype = str_replace(Haplotype, " ", "_")) %>% 
+  distinct()
+
+# Phylogenetic tree 
+tree = read.iqtree(phylo.data)
+
+```
+
+```{r Root the Tree, echo=T}
+
+# Name of the out group for rooting the tree
+root = "sspe_ancestor"
+
+# Root the tree
+tree@phylo = root(tree@phylo, outgroup = root)
+
+```
+
+## Plot the Tree
+
+Here is the tree structure of the haplotypes in the brain.
+
+```{r Add data to the tree, echo=T}
+
+# Add the background labels
+tree.df = left_join(as_tibble(tree), background.label, by=c("label" = "Haplotype")) 
+
+```
+
+```{r Label Backgrounds, echo=T}
+
+# Get the nodes in the tree
+genome.1.node = MRCA(tree, filter(background.label, Background == "genome-1")$Haplotype)
+genome.2.node = MRCA(tree, filter(background.label, Background == "genome-2")$Haplotype)
+genome.1.offspring = offspring(tree, genome.1.node)
+genome.2.offspring = offspring(tree, genome.2.node)
+
+# Add the background labels
+tree.df = as_tibble(tree) %>% 
+  mutate(branch.length = if_else(UFboot < 70 & !is.na(UFboot), 0.0, branch.length)) %>% 
+  mutate(Background = case_when(node %in% genome.1.offspring ~ "genome-1",
+                                node %in% genome.2.offspring ~ "genome-2",
+                                TRUE ~ "ancestral")) %>% 
+  mutate(label = str_replace(label, "_", " ")) %>% 
+  mutate(label = if_else(label == "sspe ancestor", "SSPE ancestor", label))
+
+```
+
+```{r Plot the Tree, fig.align="center", fig.width=32, fig.height=15}
+
+tree.df %>% 
+  as.treedata() %>% 
+  ggtree(size = 3, aes(color = Background)) +
+    geom_point2(aes(subset=(node==1)), size=12, color="#4d4d4d") + 
+    geom_point2(aes(subset=(node==genome.1.node)), size=12, color="#307EC2") + 
+    geom_point2(aes(subset=(node==genome.2.node)), size=12, color="#B63F3E") + 
+    geom_point2(aes(subset=(node==18)), size=12, color="#199400") + 
+    geom_tiplab(hjust = -.05, size = 8) + 
+    scale_color_manual(values = c("#4d4d4d", "#307EC2", "#B63F3E")) + 
+    theme(legend.position = "none") 
+
+ggsave("../../results/phylogeny/sspe-phylogeny.png", width = 32, height = 15, dpi = 300)
+
+```
+
+```{r Make a Phylogeny for Each Tissue, echo=T}
+
+mean.haplotype.freqs = updated.df %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  select(AF, Tissue, Background, Haplotype) %>% 
+  group_by(Tissue, Background, Haplotype) %>% 
+  mutate(AF = mean(AF)) %>% 
+  distinct() %>% 
+  mutate(Background = case_when(Haplotype == "cluster 13" ~ "cluster 9",
+                                Haplotype %in% c("cluster 1",
+                                                 "cluster 2",
+                                                 "cluster 4",
+                                                 "cluster 11",
+                                                 "cluster 12",
+                                                 "cluster 14") ~ "genome-1-1",
+                                Haplotype == "cluster 3" ~ "cluster 2", 
+                                TRUE ~ Background)) %>% 
+  ungroup()
+
+tissues = unique(mean.haplotype.freqs$Tissue)
+tissue.trees = list()
+for (i in 1:length(tissues)) {
+  
+  tissue = tissues[i]
+  
+  compartment.haplotypes = mean.haplotype.freqs %>% 
+    filter(Tissue == tissue) %>% 
+    select(AF, Haplotype, Tissue)
+  
+  compartment.tree = left_join(tree.df, compartment.haplotypes, by = c("label" = "Haplotype")) %>% 
+    mutate(AF = if_else(is.na(AF), 0, AF), 
+           Tissue = if_else(is.na(Tissue), tissue, Tissue),
+           label = str_remove(label, "cluster "), 
+           label = if_else(label == "SSPE ancestor", "", label))
+  
+  tissue.trees[[i]] = as.treedata(compartment.tree)
+  
+}
+
+class(tissue.trees) = "multiPhylo"
+
+```
+
+```{r Standard, fig.align="center", fig.width=10, fig.height=10}
+
+tissue.trees %>% 
+  ggtree(size = 1, aes(color = Background)) +
+    geom_point2(aes(subset=(node==1)), size=5, color="#4d4d4d") + 
+    geom_tiplab(hjust = -.6, size = 5) + 
+    geom_tippoint(aes(size = AF)) + 
+    facet_wrap( ~Tissue,) + 
+    scale_color_manual(values = c("#4d4d4d", "#307EC2", "#B63F3E")) +
+    theme(legend.position = "none") 
+
+
+ggsave("../../results/phylogeny/sspe-phylogeny-faceted.png", width = 14, height = 14, dpi = 300)
+
+```
+
+```{r With y-axis, fig.align="center", fig.width=7, fig.height=7}
+
+haplotype.colors = c("1" = "#800000",
+                     "2" = "#9A6324",
+                     "3" = "#808000",
+                     "4" = "#469990",
+                     "5" = "#000075",
+                     "6" = "#e6194B",
+                     "7" = "#f58231",
+                     "8" = "#ffe119",
+                     "9" = "#bfef45",
+                     "10" = "#911eb4",
+                     "11" = "#dcbeff",
+                     "12" = "#ffd8b1",
+                     "13" = "#42d4f4",
+                     "14" = "#aaffc3")
+
+haplotypes = c("1",
+               "2",
+               "3",
+               "4",
+               "5",
+               "6",
+               "7",
+               "8",
+               "9",
+               "10",
+               "11",
+               "12",
+               "13",
+               "14")
+
+
+tissue.trees %>% 
+  ggtree(size = 1, yscale = "AF", color="#4d4d4d") +
+    geom_point2(aes(subset=(node==1)), size=5, color="#4d4d4d") + 
+    geom_tippoint(aes(size = AF, color = label)) + 
+    facet_wrap( ~Tissue,) + 
+    scale_color_manual(breaks = haplotypes, values = haplotype.colors, name = "Haplotype") +
+    theme_minimal() +
+    theme(legend.position = "bottom") 
+
+
+ggsave("../../results/phylogeny/sspe-phylogeny-faceted-yaxis.png", width = 14, height = 14, dpi = 300)
+
+```
+
+## "Muller" Plot
+
+```{r Standardize to Backgrounds}
+
+# Everything is on these backgrounds
+backgrounds = unique(mean.haplotype.freqs$Background)
+
+set.backgrounds.to.zero = mean.haplotype.freqs %>% 
+  mutate(AF = case_when(
+    Haplotype == "genome-1" ~ 0.0, 
+    Haplotype == "genome-2" ~ 0.0, 
+    Haplotype == "genome-1-1" ~ 0.0,
+    TRUE ~ AF
+  )) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !c("Haplotype", "Background"), names_to = "Tissue", values_to = "AF") %>% 
+  arrange(Tissue)
+  
+final.df = data.frame()
+tissues = unique(set.backgrounds.to.zero$Tissue)
+for (i in 1:length(tissues)) {
+  
+  tissue = tissues[i]
+  
+  tissue.df = set.backgrounds.to.zero %>% 
+    filter(Tissue == tissue)
+  
+  # Normalize to cluster parent
+  cluster.13.af = tissue.df %>% filter(Haplotype == "cluster 13") %>% pull(AF)
+  cluster.3.af = tissue.df %>% filter(Haplotype == "cluster 3") %>% pull(AF)
+  
+  normalize.df = tissue.df %>% 
+    mutate(AF = case_when(
+      Haplotype == "cluster 2" ~ AF - cluster.3.af,
+      Haplotype == "cluster 9" ~ AF - cluster.13.af,
+      TRUE ~ AF
+    )) %>% 
+    mutate(Background = case_when(
+      Haplotype == "cluster 3" ~ "genome-1",
+      Haplotype == "cluster 13" ~ "genome-1",
+      TRUE ~ Background
+    ))
+  
+  # Add it up to 1
+  genome.1.total = mean.haplotype.freqs %>%
+    filter(Tissue == tissue & Haplotype == "genome-1") %>%
+    pull(AF)
+  
+  genome.2.total = mean.haplotype.freqs %>%
+    filter(Tissue == tissue & Haplotype == "genome-2") %>%
+    pull(AF)
+  
+  background.freqs = normalize.df %>%
+    mutate(Background = if_else(Background == "genome-1-1", "genome-1", Background)) %>% 
+    group_by(Background) %>% 
+    summarise(AF = sum(AF))
+  
+  if (tissue != "Frontal Cortex 2") {
+    
+    normalize.df = normalize.df %>% 
+      mutate(AF = case_when(
+        Haplotype == "genome-1-1" ~ genome.1.total - filter(background.freqs, Background == "genome-1")$AF,
+        Haplotype == "genome-2" ~ genome.2.total - filter(background.freqs, Background == "genome-2")$AF,
+        TRUE ~ AF
+      ))
+    
+  } else {
+    
+    normalize.df = normalize.df %>% 
+      mutate(AF = case_when(
+        Haplotype == "genome-1" ~ genome.1.total - filter(background.freqs, Background == "genome-1")$AF,
+        Haplotype == "genome-2" ~ genome.2.total - filter(background.freqs, Background == "genome-2")$AF,
+        TRUE ~ AF
+      ))
+    
+  }
+  
+  final.df = rbind(final.df, normalize.df)
+ 
+  
+}
+
+
+```
+
+```{r Stacked Bar, fig.align="center", fig.width=10, fig.height=7}
+
+haplotype.colors = c("cluster 1" = "#800000",
+                     "cluster 2" = "#9A6324",
+                     "cluster 3" = "#808000",
+                     "cluster 4" = "#469990",
+                     "cluster 5" = "#000075",
+                     "cluster 6" = "#e6194B",
+                     "cluster 7" = "#f58231",
+                     "cluster 8" = "#ffe119",
+                     "cluster 9" = "#bfef45",
+                     "cluster 10" = "#911eb4",
+                     "cluster 11" = "#dcbeff",
+                     "cluster 12" = "#ffd8b1",
+                     "cluster 13" = "#42d4f4",
+                     "cluster 14" = "#aaffc3", 
+                     "genome-1-1" = "#199400",
+                     "genome-1" = "#307EC2",
+                     "genome-2" = "#B63F3E")
+
+require(RColorBrewer)
+
+#G2 colors
+g2s <- brewer.pal(6, "YlOrRd")
+names(g2s) <- c("cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 10", "genome-2")
+
+#G1
+g11cols <- brewer.pal(9, "Blues")
+names(g11cols) <- c( "cluster 1", "cluster 2", "cluster 3", "cluster 4", "cluster 11", "cluster 12", "cluster 14", "genome-1-1", "genome-1")
+
+#cluster 9 and 13
+c913 <- brewer.pal(8, "Purples")[c(7,8)]
+names(c913) <- c("cluster 9", "cluster 13")
+
+cols <- c(g2s, g11cols, c913)
+
+
+haplotype.levels = c("cluster 1",
+                     "cluster 2",
+                     "cluster 3",
+                     "cluster 4",
+                     "cluster 11",
+                     "cluster 12",
+                     "cluster 14", 
+                     "cluster 9",
+                     "cluster 13",
+                     "genome-1-1",
+                     "genome-1",
+                     "genome-2",
+                     "cluster 5",
+                     "cluster 6",
+                     "cluster 7",
+                     "cluster 8",
+                     "cluster 10")
+
+final.df %>% 
+  mutate(AF = if_else(AF < 0, 0.0, AF)) %>% 
+  ggplot(aes(x = Tissue, y = AF, fill = factor(Haplotype, levels = haplotype.levels))) + 
+    geom_bar(stat = "identity", position = position_stack()) + 
+    scale_fill_manual(values = cols) + 
+    scale_y_continuous(breaks = c(0, .5, 1.0)) +
+    theme_classic() + 
+    labs(fill="Haplotype") +
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    theme_bw(22) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    theme(strip.text.x = element_text(size = 12)) + 
+    theme(panel.background = element_rect(fill = "grey"))
+
+
+
+ggsave("../../results/figures/stacked.png", width = 10, height = 7, dpi = 300)
+
+```
+
+
+
+```{r}
+write_csv(mean.haplotype.freqs, "mean-hapotypes-frequencies.csv")
+```
+
+```{r}
+
+
+dat <- dat %>% mutate(Haplotype = factor(Haplotype, levels = c(names(g11cols), names(c913), names(g2s))))
+```
+
+
+
+
