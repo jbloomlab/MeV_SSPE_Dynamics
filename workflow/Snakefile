@@ -28,7 +28,7 @@ samples = list(set(SAMPLE_DF['Run']))
 rule all:
     input: 
         join(config['variant_dir'], "variants.csv"),
-        join(config['notebook_dir'], "genotype-subclonal-snps.html"),
+        # join(config['notebook_dir'], "genotype-subclonal-snps.html"),
         # join(config['haplotype_dir'], "haplotypes.csv"),
         # join(config['spatial_dir'], "bottleneck.csv"), 
         join(config['bridging_dir'], "bridging_reads.csv"),

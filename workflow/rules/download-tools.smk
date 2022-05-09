@@ -49,7 +49,7 @@ rule build_SnpEff:
     input: 
         snpeff=join(config['tools'], 'snpEff/snpEff.jar'),
         ref=join(config['ref_dir'], 'MeVChiTok-SSPE.fa'),
-        gff=join(config['gff_dir'], 'MeVChiTok.gff')
+        gff=join(config['gff_dir'], 'MeVChiTok-SSPE.gff')
     output: 
         virusdir=directory(join(config['tools'], 'snpEff/data/MeVChiTok'))
     params:
