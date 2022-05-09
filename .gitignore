@@ -135,4 +135,3 @@ tmp/
 **.DS_Store
 *.snakemake
 **/index
-**/gff
