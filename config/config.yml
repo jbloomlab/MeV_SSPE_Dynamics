@@ -1,6 +1,6 @@
 #### ============ viral-deepseq configuration file ============ ####
 #                                                                  #
-# This file contains the tunable parameters for the viral-deepseq  #
+# This file contains the tunable parameters for the MeV Dynamics   #
 # pipeline.                                                        #
 #                                                                  #
 #### -------------------------- Util -------------------------- ####
@@ -10,7 +10,7 @@ snpeff: http://sourceforge.net/projects/snpeff/files/snpEff_latest_core.zip
 
 #### ------------------------- Samples ------------------------ ####
 
-samples: 
+samples:
   file: config/samples.csv
 
 #### ------------------------ Genomes ----------------------- ####
@@ -42,7 +42,6 @@ threads:
   max_cpu: 32
   pileup: 16
 
-
 # Average base quality score to exclude below
 BQ: 25
 
@@ -58,7 +57,7 @@ maxdepth: 600000
 
 #### ------------------------- Dirs ------------------------ ####
 
-# ++ Results Directoties ++ #
+# ++ Results Directories ++ #
 fastq_dir: results/fastq
 trim_dir: results/trimmed
 filter_dir: results/filtered
@@ -72,10 +71,10 @@ split_dir: results/split
 bridging_dir: results/bridging
 notebook_dir: results/notebooks
 
-# ++ Config Directoties ++ #
+# ++ Config Directories ++ #
 tools: config/tools
 ref_dir: config/ref
 gff_dir: config/gff
-index_dir: 
+index_dir:
   bwa: config/index/bwa
   samtools: config/index/samtools

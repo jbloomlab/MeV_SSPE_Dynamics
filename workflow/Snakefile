@@ -48,11 +48,18 @@ rule clean:
 
 #### ------------------------ Rules ------------------------ ####
 
-include: "rules/preprocessing.smk"
-include: "rules/format-reference.smk"
-include: "rules/align-reads.smk"
-include: "rules/call-variants.smk"
+# 0. Download tool dependencies not available on conda
 include: "rules/download-tools.smk"
+# 1. Download, trim, and filter reads
+include: "rules/preprocess-reads.smk"
+# 2. Align reads to MevChiTok reference genome
+include: "rules/first-alignment.smk"
+# 3. Build and Align reads an 'SSPE' genome 
+include: "rules/second-alignment.smk"
+# 4. Call variants using the 'SSPE' reference genome
+include: "rules/call-variants.smk"
+
+
 include: "rules/call-haplotypes.smk"
 include: "rules/calculate-coverage.smk"
 include: "rules/bridging-reads.smk"

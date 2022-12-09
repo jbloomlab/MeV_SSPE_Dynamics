@@ -1,12 +1,18 @@
+"""
 ### ======= Preprocess the fastq files ======= ###
-#
+This snakemake file contains rules for preprocessing the fastq files
+before they are aligned to the measles virus reference genome.
+
 # Author: Will Hannon 
 # Email: wwh22@uw.edu
-#
+"""
 
 rule fetch_fastq:
     """ 
-    Move the fastq files into the results directory and compress them. 
+    Move the fastq files into the results directory and compress them with gzip. 
+
+    This also renames the files to something easier to work with. In this case, 
+    it's the name of the tissue sample the sequencing was done on.
     """
     output: R1 = join(config['fastq_dir'], "{accession}", "{accession}_R1.fastq.gz"),
             R2 = join(config['fastq_dir'], "{accession}", "{accession}_R2.fastq.gz")
@@ -17,7 +23,8 @@ rule fetch_fastq:
 
 rule trim_adapters:
     """
-    Fast all-in-one processing of single `fastq` files: 
+    Use fastp to trim the adapters from the reads.
+
     1. Automatic adaptor trimming
     2. Low-qual base filtering (50% of bases w/ Phred >20) 
     3. Reporting by HTML and JSON.
@@ -45,12 +52,13 @@ rule trim_adapters:
 
 rule filter_reads:
     """ 
-    Filter out reads using kmer filtering w/ BBduk Paried-End implementation.
-    This will only work for the viral genomes because larger genomes
-    begin to require huge amounts of heap memory.
+    Use BBduk to filter out reads using kmer filtering w/ Paried-End implementation.
+    I'm using a kmer size of 31 and a hamming distance of 4. 
 
-    Genome is determined from the `samples.csv` file configuration.
-    The genomes are indexed with samtools. 
+    The genome is a composite of Measles virus genomes of the D subtype from 
+    around the time of the patients infection.
+
+    The output will contain only the measles reads and not the host reads.
     """
     input: 
         R1 = join(config['trim_dir'], "{accession}", "{accession}_R1.fastq.gz"),
@@ -76,7 +84,7 @@ rule filter_reads:
             outm2={output.R2} \
             ref={input.genome} \
             k=31 \
-            hdist=2 \
+            hdist=4 \
             stats={output.stats} \
             overwrite=TRUE \
             t={threads} \

@@ -1,5 +1,5 @@
 channels:
-    - bioconda
+  - bioconda
 dependencies:
-    - bbmap=38.86
-    - fastp=0.23.1
+  - bbmap=39.01
+  - fastp=0.23.2

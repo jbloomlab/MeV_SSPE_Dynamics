@@ -22,3 +22,17 @@ def aggregate_csv(csv_list, out_csv):
             pass
     df = pd.concat(map(pd.read_csv, valid_csv_list))
     df.to_csv(out_csv[0], index = False)
+
+
+
+def get_readgroup(wildcards):
+    """ 
+    Get the sample name from the metadata file. This will be used as
+    the readgroup for the alignment.
+    """
+    # Read the metadata into Pandas dataframe
+    samples_df = pd.read_csv(config['samples']['file'])
+    # Get the viral genome for a given accession
+    readgroup = samples_df.loc[samples_df.Run == wildcards.accession, ["Sample"]].values.flatten().tolist()[0]
+    # Return the readgroup
+    return str(readgroup)
