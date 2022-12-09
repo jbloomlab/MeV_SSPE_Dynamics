@@ -1,7 +1,5 @@
 """ 
 This pipline runs the Measle SSPE project analysis.
-
-Author: Will Hannon – https://www.linkedin.com/in/williamhannon/
 """
 
 #### ----------------------- Imports ----------------------- ####
@@ -11,7 +9,7 @@ import itertools
 from os.path import join
 from snakemake.utils import min_version
 
-min_version('6.0')  # require `snakemake` >= 6.0
+min_version('7.0')  # require `snakemake` >= 7.0
 
 #### -------------------- Configuration -------------------- ####
 

@@ -1,13 +1,13 @@
 name: MeV
 
 channels:
-  - bioconda
   - conda-forge
+  - defaults
+  - bioconda
 
 dependencies:
+  - python=3.10
+  - snakemake=7.18
+  - pandas=1.4
+  - jupyterlab
   - mamba
-  - python
-  - pandas
-  - snakemake-minimal
-  
-
