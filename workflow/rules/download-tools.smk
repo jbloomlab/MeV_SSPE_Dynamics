@@ -1,13 +1,16 @@
+"""
 ### ======= Download and assembly of tools (independent of `conda`) ======= ###
-#
+This snakemake file will download and build the tools needed for the pipeline that 
+can't be installed with `conda`. This includes Varscan, SnpEff, and SnpSift. 
+
 # Author: Will Hannon 
 # Email: wwh22@uw.edu
-# Date: 10/30/2020
-#
+"""
+
 
 rule get_varscan:
     """ 
-    Download Varscan into Tools directory. wget from github. 
+    Download Varscan into tools/ directory. Fetch from github. 
     """
     output: join(config['tools'], "VarScan.v2.4.0.jar")
     params: http=config['varscan']
@@ -16,7 +19,7 @@ rule get_varscan:
 
 rule get_SnpEff:
     """ 
-    Download and build SnpEff with annotations from gtf file. 
+    Download and build latest SnpEff with annotations from gtf file. 
     """
     output: join(config['tools'], 'snpEff/snpEff.jar')
     params:
@@ -42,9 +45,9 @@ rule get_SnpEff:
         """
 
 
-
 rule build_SnpEff:
-    """ Build the annotation repository for the genome used to call variants. 
+    """ 
+    Build the annotation repository for the SSPE genome used to call variants. 
     """
     input: 
         snpeff=join(config['tools'], 'snpEff/snpEff.jar'),
