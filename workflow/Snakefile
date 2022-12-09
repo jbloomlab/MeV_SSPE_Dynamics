@@ -1,5 +1,8 @@
 """ 
 This pipline runs the Measle SSPE project analysis.
+
+Author: Will Hannon 
+Date: 2022
 """
 
 #### ----------------------- Imports ----------------------- ####
