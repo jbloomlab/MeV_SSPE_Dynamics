@@ -14,9 +14,7 @@ rule samtools_depth:
     conda: '../envs/samtools.yml'
     shell: 
         """
-        samtools depth -m 0 -a -q {params.score} -g DUP {input.bam} \
-            | awk '{{sum+=$3}} NR%50==0 {{print $2-50 "\t" $2 "\t" sum/50 "\t"; sum=0}}' - \
-            > {output}
+        samtools depth -m 0 -a -q {params.score} -g DUP {input.bam} > {output}
 
         sed -i "s/$/\t{wildcards.accession}/" {output} 
         """
@@ -32,5 +30,5 @@ rule merge_depth:
         """
         cat {input} > {output.header}
 
-        awk 'BEGIN{{print "Start\tStop\tDepth\tAccession"}}1' {output.header} > {output.depth}
+        awk 'BEGIN{{print "POS\tDP\tAccession"}}1' {output.header} > {output.depth}
         """

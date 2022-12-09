@@ -1,5 +1,5 @@
 ---
-title: "8. Tissue Level Diversity"
+title: "9. Tissue Level Diversity"
 author: "Will Hannon"
 output: 
   html_document:

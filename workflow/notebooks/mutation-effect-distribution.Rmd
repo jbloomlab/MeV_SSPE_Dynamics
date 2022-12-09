@@ -1,0 +1,363 @@
+---
+title: "7. Mutation Effect Distribution"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to examine the distribution of mutation effects across the haplotypes and the tree. Are there different rates of ADAR mutations? Is it possible that the stop codon was aquired twice? 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse")
+
+## Check that packages are installed, if not, install them
+# installed_packages <- packages %in% rownames(installed.packages())
+# if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+# Data from lofreq and varscan labeled with subclonal haplotypes
+updated.data = "../../results/variants/assigned_variants.csv"
+
+# Consensus mutations in the SSPE genome
+consensus.data = "../../config/ref/annotated_SSPE_consensus_snps.csv"
+
+# Data from the count of bridging reads
+bridging.data = "../../results/bridging/bridging_reads.csv"
+
+# Annotations 
+annotations.filepath = "../../config/annotations.csv"
+
+```
+
+## Consenus Mutations
+
+What is the distribution of consensus mutations in the genome?
+
+```{r Import Consensus Mutations}
+
+# Consensus mutations in the SSPE genome
+consensus.df = read_csv(consensus.data) %>% 
+  mutate(ADAR = case_when(
+    REF == 'T' & ALT == 'C' ~ TRUE, 
+    REF == 'A' & ALT == 'G' ~ TRUE,
+    TRUE ~ FALSE
+  )) %>% 
+  mutate(Effect = case_when(
+    is.na(WT_AA) ~ "Synonymous",
+    WT_AA == MUT_AA ~ "Synonymous",
+    WT_AA != MUT_AA ~ "Missense"
+  ))
+
+```
+
+```{r Annotations, message=FALSE, warning=FALSE}
+
+# Import genome annotations
+annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
+
+# Get the interval positions for these genes 
+N = annotations.df %>% dplyr::filter(Locus == "N")
+P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
+M = annotations.df %>% dplyr::filter(Locus == "M")
+F. = annotations.df %>% dplyr::filter(Locus == "F")
+H = annotations.df %>% dplyr::filter(Locus == "H")
+L = annotations.df %>% dplyr::filter(Locus == "L")
+
+gene_order = c("N", "P", "M", "F", "H", "L")
+
+```
+
+```{r}
+
+consensus.df %>% 
+  filter(Gene != "intergenic") %>%
+  group_by(Gene, Effect) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>% 
+  ggplot(aes(x = factor(Gene, levels = (gene_order)), y = freq, fill = Effect)) +
+    geom_bar(stat = "identity") +
+    geom_hline(yintercept = 0.5, size = 1.5, linetype = 3) +
+    scale_fill_manual(values = c("#fc0303", "#3d46e3")) +
+    xlab("Gene Name") + 
+    ylab("Frequency") +
+    theme_bw(20)
+
+ggsave("../../results/figures/mutation-effect.png", width =  7, height = 4, dpi = 300)
+
+```
+
+```{r}
+
+consensus.df %>% 
+  filter(Gene != "intergenic") %>%
+  group_by(Gene, ADAR) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>% 
+  ggplot(aes(x = factor(Gene, levels = (gene_order)), y = freq, fill = ADAR)) +
+    geom_bar(stat = "identity") +
+    geom_hline(yintercept = 0.5, size = 1.5, linetype = 3) +
+    scale_fill_manual(values = c("#fc0303", "#3d46e3")) +
+    xlab("Gene Name") + 
+    ylab("Frequency") +
+    theme_bw(20)
+
+ggsave("../../results/figures/adar-mutations.png", width =  7, height = 4, dpi = 300)
+
+```
+
+
+```{r}
+
+gene_lengths = annotations.df %>% 
+  select(Locus, `Protein Name`, Length) %>% 
+  filter(!`Protein Name` %in% c("V protein", "C protein")) %>% 
+  select(!`Protein Name`) %>% 
+  rename(Gene = Locus) %>%   
+  mutate(Gene = if_else(Gene == "P/V/C", "P", Gene))
+
+consensus.df %>% 
+  filter(Gene != 'intergenic') %>% 
+  group_by(Gene) %>%
+  summarise(n = n()) %>% 
+  left_join(., gene_lengths, by = "Gene") %>% 
+  mutate(mutations_per_base = n/Length) %>% 
+  ggplot(aes(x = factor(Gene, levels = (gene_order)), y = mutations_per_base)) +
+    geom_bar(stat = "identity") +
+    xlab("Gene Name") + 
+    ylab("Mutations per Base") +
+    theme_bw(20)
+
+ggsave("../../results/figures/mutation-rate-per-gene.png", width =  7, height = 4, dpi = 300)
+
+```
+```{r}
+
+updated.df = read_csv(updated.data)
+
+```
+
+
+```{r warning=F, message=F, fig.align='center', fig.width=15, fig.height=10}
+
+haplotype.order = c("SSPE Ancestor",
+                    "cluster 1",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11",
+                    "cluster 12",
+                    "cluster 13",
+                    "cluster 14", 
+                    "genome-1-1",
+                    "genome-1",
+                    "genome-2")
+
+ancestral.snps = consensus.df %>% 
+  select(POS, REF, ALT, Gene, ADAR, Effect) %>% 
+  mutate(Haplotype = "SSPE Ancestor",
+         Background = "SSPE Ancestor")
+
+updated.df %>% 
+  select(Background, Haplotype, Gene, Effect, POS, REF, ALT) %>% 
+  mutate(Gene = if_else(Gene == "P/V/C", "P", Gene)) %>% 
+  mutate(Effect = if_else(is.na(Effect), "Synonymous", Effect)) %>% 
+  mutate(ADAR = case_when(
+    REF == 'T' & ALT == 'C' ~ TRUE, 
+    REF == 'A' & ALT == 'G' ~ TRUE,
+    TRUE ~ FALSE
+  )) %>% 
+  distinct()  %>% 
+  filter(!Haplotype %in% c('subclonal', 'both')) %>% 
+  rbind(., ancestral.snps) %>% 
+  
+  ggplot(aes(x = POS, y = factor(Haplotype, levels = rev(haplotype.order)), col = Background)) +
+    geom_point(aes(shape = ADAR), size = 6) +
+    xlab("Position") +
+  
+  
+    scale_x_continuous(limits=c(0,16000)) +
+    scale_color_manual(values=c("#307EC2", "#B63F3E", "black")) +
+    scale_shape_manual(values = c(108, 4)) +
+    
+    # == Annotations of genes == #
+  
+    # Nucleoprotein
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.5, ymax = .5 ,
+               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
+    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .05, label = "N", size = 8) +
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.5, ymax = 17.5 ,
+                   alpha = .1, fill = "dodgerblue2", size = .1) +  
+    # P/V/C
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = -.5, ymax = .5 ,
+               alpha = .2, fill = "yellow3", col = "black", size = .1) +
+    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .05, label = "P/V/C", size = 8) +
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = -.5, ymax = 17.5 ,
+               alpha = .1, fill = "yellow3", size = .1) +
+    # Matrix protein
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = -.5, ymax = .5 ,
+               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
+    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .05, label = "M", size = 8)  +
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = -.5, ymax = 17.5 ,
+               alpha = .1, fill = "#FF7F00", size = .1) +
+    # Fusion protein
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = -.5, ymax = .5 ,
+               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
+    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .05, label = "F", size = 8) +
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = -.5, ymax = 17.5 ,
+               alpha = .1, fill = "#6A3D9A", size = .1) +
+    # Hemagluttinin
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = -.5, ymax = .5 ,
+               alpha = .2, fill = "green4", col = "black", size = .1) +
+    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .05, label = "H", size = 8) +
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = -.5, ymax = 17.5,
+               alpha = .1, fill = "green4", size = .1) +
+    # Large protein
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = -.5, ymax = .5 ,
+               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
+    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .05, label = "L", size = 8) +
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = -.5, ymax = 17.5 ,
+               alpha = .1, fill = "#E31A1C", size = .1) +
+  
+    theme_classic() +
+    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+    theme(legend.position="bottom", legend.box = "horizontal") +
+    theme(legend.box.background = element_rect(colour = "black")) +
+    theme(text=element_text(size=24)) + 
+    theme(axis.text.x = element_text(size=28)) + 
+    theme(axis.title.x = element_text(size=30)) + 
+    theme(plot.title = element_text(hjust = 0.5))  +
+    theme(axis.title.y = element_blank()) +
+    theme(legend.position = "bottom")  
+
+ggsave("../../results/figures/mutations-per-haplotype.png", width =  15, height = 10, dpi = 300)
+
+```
+
+## OTHER STUFF 
+
+```{r}
+
+updated.df %>% 
+  filter(Haplotype %in% c("genome-1", "cluster 9")) %>% 
+  filter(Gene_Name == "M") %>% 
+  select(POS, REF, ALT, Haplotype) %>% 
+  distinct() %>% 
+  arrange(POS)
+
+```
+
+```{r}
+consensus.df %>% 
+  filter(POS == 3812)
+```
+
+```{r}
+
+updated.df %>% 
+  filter(Haplotype != "subclonal") %>% 
+  filter(POS == 7304)
+  
+
+```
+
+```{r}
+
+bridging.df = read_csv(bridging.data)
+
+mutation.df = bridging.df %>% 
+  filter(snp_1 == 7036 | snp_2 == 7036)
+```
+
+
+```{r}
+g1.pos = updated.df %>% 
+  filter(Background == "genome-1") %>% 
+  pull(POS)
+
+
+g2.pos = updated.df %>% 
+  filter(Background == "genome-2") %>% 
+  pull(POS)
+```
+
+```{r}
+
+mutation.df %>% 
+  filter(snp_1 %in% g1.pos | snp_2 %in% g1.pos) %>% 
+  arrange(-`11`)
+
+```
+
+
+```{r}
+
+mutation.df %>% 
+  filter(snp_1 %in% g2.pos | snp_2 %in% g2.pos) %>% 
+  arrange(-`11`) %>% 
+  mutate(g1_total = `00` + `10`,
+         g2_total = `01` + `11`) %>% 
+  rename(genome_1_no_mut = `00`,
+         genome_2_no_mut = `01`,
+         genome_1_mut = `10`,
+         genome_2_mut = `11`) %>% 
+  select(!c("snp_1", "snp_2")) %>% 
+  mutate(genome_1_no_mut = round((genome_1_no_mut/g1_total) * 100, 2),
+         genome_2_no_mut = round((genome_2_no_mut/g2_total) * 100, 2),
+         genome_1_mut = round((genome_1_mut/g1_total) * 100, 2),
+         genome_2_mut = round((genome_2_mut/g2_total) * 100, 2)) %>% view()
+  
+
+```
+
+```{r}
+
+cluster.6 = updated.df %>% 
+  filter(Haplotype == "cluster 6") %>% 
+  pull(POS) %>% 
+  unique()
+
+cluster.6.df = bridging.df %>% 
+  filter(snp_1 %in% cluster.6 | snp_2 %in% cluster.6)
+
+cluster.6.df %>% 
+  filter(snp_1 %in% g2.pos | snp_2 %in% g2.pos) %>%
+  filter(Tissue %in% c("Frontal Cortex 1", "Frontal Cortex 3", "Parietal Lobe")) %>% 
+  view()
+  
+```
+

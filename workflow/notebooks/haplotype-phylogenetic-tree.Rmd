@@ -1,5 +1,5 @@
 ---
-title: "6. Haplotype Phylogenetic Tree"
+title: "8. Haplotype Phylogenetic Tree"
 author:
     - "Will Hannon"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -118,13 +118,13 @@ tree.df = as_tibble(tree) %>%
 
 ```{r Plot the Tree, fig.align="center", fig.width=32, fig.height=15}
 
-tree.df %>% 
+tree.plt = tree.df %>% 
   as.treedata() %>% 
   ggtree(size = 3, aes(color = Background)) +
     geom_point2(aes(subset=(node==1)), size=12, color="#4d4d4d") + 
     geom_point2(aes(subset=(node==genome.1.node)), size=12, color="#307EC2") + 
     geom_point2(aes(subset=(node==genome.2.node)), size=12, color="#B63F3E") + 
-    geom_point2(aes(subset=(node==18)), size=12, color="#199400") + 
+    geom_point2(aes(subset=(node==23)), size=12, color="#199400") + 
     geom_tiplab(hjust = -.05, size = 8) + 
     scale_color_manual(values = c("#4d4d4d", "#307EC2", "#B63F3E")) + 
     theme(legend.position = "none") 
@@ -406,12 +406,118 @@ ggsave("../../results/figures/stacked.png", width = 10, height = 7, dpi = 300)
 write_csv(mean.haplotype.freqs, "mean-hapotypes-frequencies.csv")
 ```
 
-```{r}
+```{r fig.width=15, fig.height=10}
+
+tissue.frequencies = final.df %>% 
+  mutate(Haplotype = case_when(
+    Haplotype == "genome-1" ~ "genome 1",
+    Haplotype == "genome-2" ~ "genome 2",
+    Haplotype == "genome-1-1" ~ "genome 1_1",
+    TRUE ~ Haplotype
+  )) %>% 
+  select(!Background) %>% 
+  spread(Tissue, AF, fill = 0) %>% 
+  column_to_rownames(var = "Haplotype") 
 
 
-dat <- dat %>% mutate(Haplotype = factor(Haplotype, levels = c(names(g11cols), names(c913), names(g2s))))
+gheatmap(tree.plt, tissue.frequencies,
+        colnames_angle=-30,
+        colnames_position = "bottom",
+        colnames_offset_y = 1.3,
+        width=.6,
+        offset =.0005,
+        font.size = 8,
+        low = "white",
+        high = "red",
+        hjust = 0,
+        legend_title = "Allele Frequency") +
+    theme(legend.position = "none")
+  
+ggsave("../../results/figures/sspe-phylogeny-with-heatmap.png", width = 23, height = 20, dpi = 300)
+
 ```
 
+```{r fig.width=15, fig.height=10}
+
+tree.df %>% 
+  mutate(ADAR = case_when(
+    node == genome.1.node ~ "X X X X X",
+    node == genome.2.node ~ "",
+    TRUE ~ ""
+  )) %>% 
+  as.treedata() %>% 
+  ggtree(size = 3, aes(color = Background)) +
+    geom_point2(aes(subset=(node==1)), size=12, color="#4d4d4d") + 
+    geom_point2(aes(subset=(node==genome.1.node)), size=12, color="#307EC2") + 
+    geom_point2(aes(subset=(node==genome.2.node)), size=12, color="#B63F3E") + 
+    geom_point2(aes(subset=(node==23)), size=12, color="#199400") + 
+    geom_tiplab(hjust = -.05, size = 8)  + 
+    geom_text(aes(x=branch, label=ADAR), size=10, 
+              vjust=-.3, color="firebrick") +
+    scale_color_manual(values = c("#4d4d4d", "#307EC2", "#B63F3E")) + 
+    theme(legend.position = "none") 
 
 
+```
+
+```{r Tree with ADAR, fig.width=15, fig.height=10}
+
+ADAR.df = updated.df %>% 
+  mutate(ADAR = case_when(
+    REF == 'T' & ALT == 'C' ~ TRUE, 
+    REF == 'A' & ALT == 'G' ~ TRUE,
+    TRUE ~ FALSE
+  )) %>% 
+  select(Haplotype, SNP, ADAR) %>% 
+  distinct() %>% 
+  group_by(Haplotype, ADAR) %>% 
+  count() %>% 
+  filter(ADAR == TRUE) %>% 
+  ungroup() %>% 
+  select(!ADAR) %>% 
+  filter(!Haplotype %in% c("both", "subclonal")) %>% 
+  mutate(ADAR = strrep("X", n)) %>% 
+  left_join(., select(tree.df, label, node), by = c("Haplotype" = "label")) %>% 
+  mutate(node = case_when(
+    Haplotype == "genome-2" ~ as.integer(genome.2.node),
+    Haplotype == "genome-1" ~ as.integer(genome.1.node),
+    Haplotype == "genome-1-1" ~ as.integer(23),
+    Haplotype == "cluster 9" ~ as.integer(22),
+    Haplotype == "cluster 2" ~ as.integer(29),
+    TRUE ~ node
+  )) %>% 
+  select(ADAR, node)
+  
+
+tree.plt.adar = tree.df %>% 
+  left_join(., ADAR.df, by = "node") %>%
+  as.treedata() %>% 
+  ggtree(size = 3, aes(color = Background)) +
+    geom_point2(aes(subset=(node==1)), size=12, color="#4d4d4d") + 
+    geom_point2(aes(subset=(node==genome.1.node)), size=12, color="#307EC2") + 
+    geom_point2(aes(subset=(node==genome.2.node)), size=12, color="#B63F3E") + 
+    geom_point2(aes(subset=(node==23)), size=12, color="#199400") + 
+    geom_tiplab(hjust = -.05, size = 8)  + 
+    geom_text(aes(x=branch, label=ADAR), size=6, 
+              vjust=-.3, color="firebrick") +
+    scale_color_manual(values = c("#4d4d4d", "#307EC2", "#B63F3E")) + 
+    theme(legend.position = "none") 
+
+
+gheatmap(tree.plt.adar, tissue.frequencies,
+        colnames_angle=-30,
+        colnames_position = "bottom",
+        colnames_offset_y = 1.4,
+        width=.6,
+        offset =.0005,
+        font.size = 8,
+        low = "white",
+        high = "red",
+        hjust = 0,
+        legend_title = "Allele Frequency") +
+    theme(legend.position = "none")
+  
+ggsave("../../results/figures/sspe-phylogeny-with-heatmap-and-adar.png", width = 23, height = 20, dpi = 300)
+
+```
 

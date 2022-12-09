@@ -45,18 +45,18 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Data from lofreq and varscan labeled with G1 and G2 mutations
-# labeled.data = "../../results/variants/genotyped_variants.csv"
-labeled.data = snakemake@params[["incsv"]]
+labeled.data = "../../results/variants/genotyped_variants.csv"
+# labeled.data = snakemake@params[["incsv"]]
 
 
 # Import the sample data
-# sample.data = "../../config/samples.csv"
-sample.data = snakemake@params[["samples"]]
+sample.data = "../../config/samples.csv"
+# sample.data = snakemake@params[["samples"]]
 
 
 # Annotations 
-# annotations.filepath = "../../config/annotations.csv"
-annotations.filepath = snakemake@params[["annotations"]]
+annotations.filepath = "../../config/annotations.csv"
+# annotations.filepath = snakemake@params[["annotations"]]
 
 ```
 
@@ -64,10 +64,10 @@ annotations.filepath = snakemake@params[["annotations"]]
 
 ## ==== File paths output data ==== ##
 
-# Path to save the figures for lab meeting 
-# output.path = "../../results/variants/clustered_variants.csv"
+# Path to save the results
+output.path = "../../results/variants/clustered_variants.csv"
 
-output.path = snakemake@params[["outcsv"]]
+# output.path = snakemake@params[["outcsv"]]
 
 ```
 
@@ -378,7 +378,7 @@ sublonal.so.far = updated.haplotype.df %>%
   pull(SNP)
 
 twentyfive.percent.or.more.clusters.df %>% 
-  filter(SNP %in% sublonal.so.far) %>% 
+  filter(SNP %in% sublonal.so.far) %>%
     ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
       geom_line(data = filter(twentyfive.percent.or.more.clusters.df, SNP %in% sublonal.so.far),
                 aes(x = factor(Tissue, levels = tissue_order), y = AF, group = SNP, col = (cluster)), size = 1) +
@@ -618,6 +618,8 @@ expanded.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
+ggsave("../../results/figures/all-current-clusters.png", width = 20, height = 12, dpi = 300)
+
 ```
 
 ```{r, Write out, echo=T}
@@ -640,8 +642,6 @@ updated.haplotype.df = updated.haplotype.df %>%
                                 TRUE ~ Background))
 
 head(updated.haplotype.df)
-
-# write_csv(updated.haplotype.df, paste(output.path, "clustered_variants.csv", sep = "/"))
 
 write_csv(updated.haplotype.df, output.path)
 

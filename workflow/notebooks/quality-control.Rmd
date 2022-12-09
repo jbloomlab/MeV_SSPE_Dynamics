@@ -45,9 +45,9 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Variant data parsed from from lofreq, ivar, and varscan VCFs
-# variant.data = "../../results/variants/variants.csv"
+variant.data = "../../results/variants/variants.csv"
 
-variant.data = snakemake@input[[1]]
+# variant.data = snakemake@input[[1]]
 
 ```
 
@@ -56,9 +56,9 @@ variant.data = snakemake@input[[1]]
 ## ==== File paths output data ==== ##
 
 # Path to save the figures for lab meeting 
-# output.path = "../../results/variants/filtered_variants.csv"
+output.path = "../../results/variants/filtered_variants.csv"
 
-output.path = snakemake@params[["outcsv"]]
+# output.path = snakemake@params[["outcsv"]]
 
 # if (!dir.exists(output.path)) {
 #   dir.create(file.path(output.path), showWarnings = FALSE)
