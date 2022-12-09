@@ -6,55 +6,35 @@ __default__:
   time: 0-2
   mem: 32000
   name: "{rule}"
-  user: wwh22@uw.edu
-  mailtype: END
-
 
 filter_reads:
-  cpus: 32
+  cpus: 16
   partition: campus-new
   time: 0-2
   mem: 100000
   name: "{rule}"
-  user: wwh22@uw.edu
-  mailtype: END
-
 
 bwa_align:
   cpus: 16
   partition: campus-new
   time: 0-4
-  user: wwh22@uw.edu
-  mailtype: END
-
 
 bwa_realign:
   cpus: 16
   partition: campus-new
   time: 0-4
-  user: wwh22@uw.edu
-  mailtype: END
-
 
 make_sspe_reference:
   cpus: 16
   partition: campus-new
   time: 0-4
-  user: wwh22@uw.edu
-  mailtype: END
-
 
 lofreq_calling:
   cpus: 16
   partition: campus-new
   time: 0-4
-  user: wwh22@uw.edu
-  mailtype: END
-
 
 cliqueSNV:
   cpus: 16
   partition: campus-new
   time: 0-4
-  user: wwh22@uw.edu
-  mailtype: END
