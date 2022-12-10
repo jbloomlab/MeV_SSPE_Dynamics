@@ -15,7 +15,6 @@ mkdir -p tmp
 # Run the main analysis on `slurm` cluster
 snakemake \
     --use-conda \
-    --conda-frontend mamba \
     --conda-prefix ./env \
     -j 999 \
     --cluster-config cluster.yml \

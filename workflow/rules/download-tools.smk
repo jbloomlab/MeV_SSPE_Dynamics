@@ -48,11 +48,13 @@ rule get_SnpEff:
 rule build_SnpEff:
     """ 
     Build the annotation repository for the SSPE genome used to call variants. 
+
+    The GFF file can come from the non-SSPE genome. It should be the same genes.
     """
     input: 
         snpeff=join(config['tools'], 'snpEff/snpEff.jar'),
         ref=join(config['ref_dir'], 'MeVChiTok-SSPE.fa'),
-        gff=join(config['gff_dir'], 'MeVChiTok-SSPE.gff')
+        gff=join(config['gff_dir'], 'MeVChiTok.gff')
     output: 
         virusdir=directory(join(config['tools'], 'snpEff/data/MeVChiTok'))
     params:

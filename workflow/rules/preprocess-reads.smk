@@ -84,7 +84,7 @@ rule filter_reads:
             outm2={output.R2} \
             ref={input.genome} \
             k=31 \
-            hdist=4 \
+            hdist=2 \
             stats={output.stats} \
             overwrite=TRUE \
             t={threads} \

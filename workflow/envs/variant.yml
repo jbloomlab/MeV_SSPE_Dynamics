@@ -3,9 +3,9 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - samtools=1.10
-  - gatk4=4.1
-  - lofreq=2.1.5
+  - samtools
+  - gatk4
+  - lofreq
   - bcftools
   - ivar
   - octopus

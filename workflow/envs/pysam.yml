@@ -1,9 +1,9 @@
 channels:
   - anaconda
-  - conda-forge 
+  - conda-forge
   - bioconda
 dependencies:
-  - pysam=0.20.0
-  - biopython=1.80
+  - pysam
+  - biopython
   - pandas
   - numpy

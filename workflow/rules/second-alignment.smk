@@ -78,7 +78,7 @@ rule annotate_consensus_mutations:
     conda: '../envs/pysam.yml'
     script: '../scripts/annotate-sspe-reference.py'
 
-
+    
 rule bwa_realign:
     """ 
     Perform short read alignment of the filtered viral reads with `bwa-mem`.

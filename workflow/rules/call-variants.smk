@@ -23,7 +23,7 @@ rule ivar_calling:
     a good alternative to Varscan.
     """
     input: bam = join(config['realign_dir'], "{accession}", "{accession}.sorted.bam"),
-           gff = join(config['gff_dir'], 'MeVChiTok-SSPE.gff'),
+           gff=join(config['gff_dir'], 'MeVChiTok.gff'),
            genome = join(config['index_dir']['samtools'], 'MeVChiTok-SSPE.fa')
     output: txt = join(config['variant_dir'], "{accession}", "{accession}.ivar.ann.txt"),
             tsv = temp(join(config['variant_dir'], "{accession}", "{accession}.ivar.ann.tsv"))
