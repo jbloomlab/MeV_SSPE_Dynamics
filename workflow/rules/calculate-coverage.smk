@@ -1,11 +1,17 @@
+"""
 ### ======= Calculate read coverage ======= ###
-#
+This snakemake file uses samtools to calculate the read coverage for each sample.
+
+Since this is most important for variant calling, I am using the realigned bam files as input.
+
 # Author: Will Hannon 
 # Email: wwh22@uw.edu
-#
+"""
+
 
 rule samtools_depth:
-    """ Calculate the depth over each position filtering by the phred base score. 
+    """ 
+    Calculate the depth over each position filtering by the phred base score. 
     """
     input: bam = join(config['realign_dir'], "{accession}", "{accession}.sorted.bam")
     output: join(config['coverage_dir'], "{accession}", "{accession}.depth")
@@ -21,7 +27,8 @@ rule samtools_depth:
 
 
 rule merge_depth:
-    """ Merge the samtools depth tables for all of the accessions into a single file.
+    """ 
+    Merge the samtools depth tables for all of the accessions into a single file.
     """
     input: expand(join(config['coverage_dir'], "{accession}", "{accession}.depth"), accession=samples)
     output: depth = join(config['coverage_dir'], "merged.depth"),

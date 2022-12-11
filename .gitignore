@@ -1,16 +1,24 @@
 # Generally ignore files with these prefixes
 .*
 _*
+
 # Ignore directories
 env/
 tmp/
+
 # Selectively ignore files in the cofig directory
-config/
+config/*
+
 !config/samples.csv
 !config/annotations.csv
 !config/config.yml
+
+!config/ref/
+config/ref/*
 !config/ref/MeVChiTok.fa
+
 # Selectively ignore files in the results directory
-results/
-
-
+results/*
+!results/variants
+results/variants/*
+!results/variants/variants.csv

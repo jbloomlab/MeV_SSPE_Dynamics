@@ -1,12 +1,17 @@
+"""
 ### ======= Identify variants using vatiant calling/annotation programs ======= ###
-#
+This snakemake file 
+
 # Author: Will Hannon 
 # Email: wwh22@uw.edu
-#
+"""
+
 
 rule samtools_mpileup:
     """ 
     Calculate the pileup of bases at every position in virus genome.
+
+    This is necessary for variant calling with VarScan.
     """
     input: bam = join(config['realign_dir'], "{accession}", "{accession}.sorted.bam"),
            genome = join(config['index_dir']['samtools'], 'MeVChiTok-SSPE.fa')
@@ -19,11 +24,12 @@ rule samtools_mpileup:
 
 rule ivar_calling:
     """
-    Variant calling with iVar. Benchmarked for viruses, seems like 
-    a good alternative to Varscan.
+    Variant calling with iVar.
+    
+    Since it's benchmarked for viruses, seems like a good alternative.
     """
     input: bam = join(config['realign_dir'], "{accession}", "{accession}.sorted.bam"),
-           gff=join(config['gff_dir'], 'MeVChiTok.gff'),
+           gff = join(config['gff_dir'], 'MeVChiTok.gff'),
            genome = join(config['index_dir']['samtools'], 'MeVChiTok-SSPE.fa')
     output: txt = join(config['variant_dir'], "{accession}", "{accession}.ivar.ann.txt"),
             tsv = temp(join(config['variant_dir'], "{accession}", "{accession}.ivar.ann.tsv"))
@@ -43,7 +49,9 @@ rule ivar_calling:
 
 rule varscan_calling:
     """ 
-    SNP calling with Varscan. Parameters are controlled from the config file.  
+    SNP calling with Varscan.
+    
+    Parameters are controlled from the config file.  
     """
     input: 
         varscan = join(config['tools'], "VarScan.v2.4.0.jar"),
@@ -56,7 +64,7 @@ rule varscan_calling:
         minimum_base_quality = config['BQ'],
         minimum_variant_freq = config['min_allele_frequency'],
         strand_filter = config['strand_bias_filter']
-    conda: '../envs/variant.yml'    
+    conda: '../envs/java.yml'    
     shell:
         """
         # Call SNPs and InDels using the mpileup file
@@ -74,14 +82,16 @@ rule varscan_calling:
 
 rule lofreq_calling:
     """ 
-    Call variants (SNP and indels) with the reference. Using only defaut filtering.
+    Call variants (SNP and indels) with the reference.
+    
+    Using only defaut filtering.
     """
     input: bam = join(config['realign_dir'], "{accession}", "{accession}.sorted.bam"),
            genome = join(config['index_dir']['samtools'], 'MeVChiTok-SSPE.fa')
     output: join(config['variant_dir'], "{accession}", "{accession}.lofreq.vcf")
     params: 
         maxdepth = config['maxdepth']
-    conda: '../envs/variant.yml'
+    conda: '../envs/lofreq.yml'
     threads: config['threads']['max_cpu']
     shell:
         """
@@ -101,7 +111,9 @@ rule lofreq_calling:
 rule annotate_vcf:
     """
     Use the program SnpEff to annotate the effect of 
-    mutations using the custom virus genome.
+    mutations using the custom virus genome as reference.
+
+    This tool is set up in the download_tools.smk file.
     """
     input:
         virusdir = join(config['tools'], 'snpEff/data/MeVChiTok'),
@@ -122,13 +134,12 @@ rule annotate_vcf:
 
 rule vcf_to_table:
     """
-    Convert varscan VCF files to tables for easy data
-    analysis in R or Python. This will only work with 
-    Varscan2 due to the program specific data fields. 
+    Convert the VCF files to tables for easy data
+    analysis in R or Python.
     """
     input: join(config['variant_dir'], "{accession}", "{accession}.{caller}.ann.vcf")
     output: join(config['variant_dir'], "{accession}", "{accession}.{caller}.ann.txt")
-    conda: '../envs/variant.yml'    
+    conda: '../envs/gatk.yml'    
     shell:
         """
         if [ -s {input} ]; then
@@ -160,7 +171,7 @@ rule aggregate_variants:
     """
     This rule aggregates all of the variants. 
     """
-    input: expand([join(config['variant_dir'], "{accession}", "{accession}.{caller}.ann.csv")], accession=samples, caller=['lofreq', 'ivar', 'varscan'])
+    input: expand([join(config['variant_dir'], "{accession}", "{accession}.{caller}.ann.csv")], accession=samples, caller=['lofreq', 'varscan'])
     output: join(config['variant_dir'], "variants.csv")
     run: aggregate_csv(input, output)
 

@@ -1,8 +1,10 @@
+"""
 ### ======= Utility functions ======= ###
-#
+This snakemake file contains utility functions that are used throughout the pipeline. 
+
 # Author: Will Hannon 
 # Email: wwh22@uw.edu
-#
+"""
 
 def aggregate_csv(csv_list, out_csv):
     """

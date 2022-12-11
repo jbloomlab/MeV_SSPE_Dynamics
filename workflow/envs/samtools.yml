@@ -1,7 +1,5 @@
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
 dependencies:
-  - samtools
-  - bedtools
-  - parallel
+  - samtools==1.11

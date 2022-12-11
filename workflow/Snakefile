@@ -29,13 +29,14 @@ samples = list(set(SAMPLE_DF['Run']))
 rule all:
     input: 
         join(config['variant_dir'], "variants.csv"),
+        join(config['coverage_dir'], "merged.depth"),
+        join(config['ref_dir'], 'annotated_SSPE_consensus_snps.csv')
+
         # join(config['notebook_dir'], "genotype-subclonal-snps.html"),
         # join(config['haplotype_dir'], "haplotypes.csv"),
         # join(config['spatial_dir'], "bottleneck.csv"), 
         # join(config['bridging_dir'], "bridging_reads.csv"),
         # join(config['bridging_dir'], "genotyped.csv"),
-        # join(config['coverage_dir'], "merged.depth"),
-        # join(config['ref_dir'], 'annotated_SSPE_consensus_snps.csv')
 
       
 rule clean:
@@ -56,11 +57,13 @@ include: "rules/preprocess-reads.smk"
 include: "rules/first-alignment.smk"
 # 3. Build and Align reads an 'SSPE' genome 
 include: "rules/second-alignment.smk"
-# 4. Call variants using the 'SSPE' reference genome
-include: "rules/call-variants.smk"
-
-
-include: "rules/call-haplotypes.smk"
+# 4. Calculate coverage of the sequencing reads
 include: "rules/calculate-coverage.smk"
-include: "rules/bridging-reads.smk"
+# 5. Call variants using the 'SSPE' reference genome
+include: "rules/call-variants.smk"
+# 6. Run R notebooks that cluster and haplotype variants by frequency
 include: "rules/process-variants.smk"
+# 7. Count reads that cover multiple variants 
+include: "rules/bridging-reads.smk"
+# 8. Call haplotypes using the 'SSPE' reference genome
+include: "rules/call-haplotypes.smk"
