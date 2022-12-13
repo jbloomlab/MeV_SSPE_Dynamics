@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to identify other clusters of mutations with same approach used to define the mutations in `genome-1` and `genome-2`. Hopefully, these can be used to establish other clonal haplotypes on the background of `genome-1` and `genome-2`. 
+The goal of this notebook is to identify other clusters of mutations with same approach used to define the mutations in `Genome-1` and `Genome-2`. Hopefully, these can be used to establish subclonal haplotypes on the background of `Genome-1` and `Genome-2`. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -29,36 +29,28 @@ knitr::opts_chunk$set(echo = FALSE)
 ## List of all packages needed
 packages = c("tidyverse", "cluster")
 
-## Check that packages are installed, if not, install them
-# installed_packages <- packages %in% rownames(installed.packages())
-# if (any(installed_packages == FALSE)) {
-#   install.packages(packages[!installed_packages])
-# }
-
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
+
+The inputs for this analysis are (1) the filtered and combined variants annotated by major genotypes from `identify-backgrounds.Rmd` and (2) annotations of the positions of the main Measles open reading frames. 
 
 ```{r Inputs, echo=T}
 
 ## ==== File paths input data ==== ##
 
 # Data from lofreq and varscan labeled with G1 and G2 mutations
-labeled.data = "../../results/variants/genotyped_variants.csv"
-# labeled.data = snakemake@params[["incsv"]]
-
-
-# Import the sample data
-sample.data = "../../config/samples.csv"
-# sample.data = snakemake@params[["samples"]]
-
+# labeled.data = "../../results/variants/genotyped_variants.csv"
+labeled.data = snakemake@params[['incsv']]
 
 # Annotations 
-annotations.filepath = "../../config/annotations.csv"
-# annotations.filepath = snakemake@params[["annotations"]]
+# annotations.filepath = "../../config/annotations.csv"
+annotations.filepath = snakemake@params[['annotations']]
 
 ```
+
+The output of this notebook are the filtered variants further annotated with clusters of mutations that make up probable subclonal haplotypes.  
 
 ```{r Outputs, echo=T}
 
@@ -66,10 +58,13 @@ annotations.filepath = "../../config/annotations.csv"
 
 # Path to save the results
 output.path = "../../results/variants/clustered_variants.csv"
-
-# output.path = snakemake@params[["outcsv"]]
+output.path = snakemake@params[['outcsv']]
 
 ```
+
+## Identify Subclonal Haplotypes
+
+Since the goal of this notebook is use the same technique that I used to identify `Genome-1`, `Genome-2`, and `Genome-1-1`, but for mutations that aren't necessarily found in every single tissue, I need to account for missing mutations. To do this, I spread the data frame of frequencies and assign an allele frequency of 0 if a variant is missing from a tissue. This will allow us to cluster all of the mutations. 
 
 ```{r Process for Haplotyping, warning=F, message=F, echo=T}
 
@@ -101,26 +96,28 @@ tissue.mean = labeled.df %>%
          Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
   rename("AF" = AF.mean)
 
-# Tissue order ~ relative to position in the brain. 
-tissue_order = c("Frontal Cortex 1", 
-  "Frontal Cortex 3", 
+# Tissue order - roughly by the location in the brain 
+tissue_order = c(
+  "SSPE 1", 
+  "SSPE 2",
   "Frontal Cortex 2", 
-  "Temporal Lobe", 
+  "Frontal Cortex 1", 
+  "Frontal Cortex 3", 
   "Parietal Lobe",
+  "Temporal Lobe", 
   "Occipital Lobe",
   "Hippocampus",
   "Internal Capsule", 
-  "Cerebellum",
-  "Cerebellum Nucleus",
   "Midbrain", 
   "UBS",
-  "Brain Stem")
+  "Brain Stem",
+  "Cerebellum",
+  "Cerebellum Nucleus"
+)
 
 ```
 
-## Haplotyping subclonal mutations
-
-I'll try to use the same haployping approach that I used to cluster the mutations for `genome-1` and `genome-2`. To do this, I'll break down the mutations into bins of frequency. I think this will work the best to get clusters of mutations. 
+I'll write the approach I used in `identify-backgrounds.Rmd` into a reusable function. I can provide a list of SNPs, the full data frame, and the number of clusters I'm targeting.
 
 ```{r Function to Cluster SNPs by Frequency, echo=T}
 
@@ -165,11 +162,11 @@ cluster.snps <- function(list.of.snps, snp.df, n.clusters) {
 
 ```
 
-## Haplotyping subclonal mutations
+Although this approach works reasonably well, it's *very susceptible to noise*. This means that you can't just provide *all* the variants at once and expect the algorithm to partition them into correct clusters. Instead, the best approach I found was to break variants down into bins based on their frequency and cluster these separately. The higher average frequency, the less noise, and the better the algorithm is at partitioning the variants into meaningful clusters. 
 
 ### >= 25% Allele Frequency Mutations
 
-Can I link the SNPs that reach reasonably high frequency in some samples? I define these as reaching 25% or more in at least one tissue. 
+First, I'll start with a 'high-frequency' bin. This includes all variants that reach greater than or equal to 25% in at least one tissue. 
 
 ```{r Twentyfive percent or more clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
 
@@ -192,7 +189,7 @@ twentyfive.percent.or.more.clusters.mean = twentyfive.percent.or.more.clusters.d
 
 # Plot the clusters
 twentyfive.percent.or.more.clusters.df %>% 
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
       geom_line(aes(group = SNP)) +
       geom_line(data = twentyfive.percent.or.more.clusters.mean, aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
       geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
@@ -207,17 +204,22 @@ twentyfive.percent.or.more.clusters.df %>%
 
 ```
 
-Some clusters have only a single mutation in them. Clearly, some of these belong to `genome-1` or `genome-2`, but are missing from a single tissue, perhaps due to low coverage in that particular tissue. Also, some of these clusters with one SNP might be consensus mutations or mutations on both backgrounds that need to be resolved separately.
+Some clusters have only a single mutation in them. Clearly, some of these belong to `Genome-1`, `Genome-2`, and `Genome-1-1`, but are missing from a single tissue, perhaps due to low coverage in that particular tissue. 
 
 ```{r Resolving single clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
 
-twentyfive.percent.or.more.clusters.df %>% 
+high.frequency.not.clustered.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(n == 1) %>% # clusters that have only a single SNP in them
-    ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
+  pull(SNP)
+  
+expanded.df %>% 
+  filter(SNP %in% high.frequency.not.clustered.snps) %>% 
+  left_join(., distinct(select(labeled.df, SNP, Gene_Name, AA_Change))) %>% 
+  mutate(mutation.type = paste(Gene_Name, SNP, sep = "-")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
       geom_line(aes(group = SNP)) +
-      # geom_line(data = twentyfive.percent.or.more.clusters.mean, aes(x = Tissue, y = AF, group = 1, col = (cluster)), size = 1) +
       geom_ribbon(data = tissue.mean, aes(x=Tissue, ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      facet_wrap(~cluster_size) + 
+      facet_wrap(~mutation.type) + 
       scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
       xlab("Tissue") + 
       ylab("Allele Frequency") +
@@ -226,14 +228,23 @@ twentyfive.percent.or.more.clusters.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
+```
+
+Cluster 18 (L-A15084G) is a mutation in `Genome-1-1` that was too low frequency to be called in the `Frontal Cortex 2` sample. Cluster 6 (M-C4502T) is mutation that's part of `Genome-2` but was too low coverage in the `Cerebellum`. Finally, Cluster 9 (M-C4573T) is a mutation in `Genome-1` that was also too low coverage in the `Cerebellum`. Generally, the `Cerebellum` has the lowest coverage of any tissue, so this isn't surprising. All-in-all, this adds three mutations to already existing haplotypes. I already addressed F-C7036T, N-G810A, and H-T7293C in the `identify-backgrounds.Rmd` notebook. Finally, M-C4532T might also belong as part of the reference?
+
+I'll annotate these variants in the main data frame.
+
+```{r Annotate single clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
+
 # Clusters that are clearly genome-1 
 genome.1.missing.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(9)) %>% 
   pull(SNP) %>% 
   unique(.)
 
+# Clusters that are clearly genome-1-1
 genome.1.1.missing.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(16)) %>% 
+  filter(cluster %in% c(18)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -245,7 +256,7 @@ genome.2.missing.snps = twentyfive.percent.or.more.clusters.df %>%
 
 # Clusters that break the rules 
 maybe.in.both.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(12, 13)) %>% 
+  filter(cluster %in% c(8, 13, 2, 15)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -266,14 +277,14 @@ updated.haplotype.df = labeled.df %>%
 
 ```
 
-Now, lets look at the remainder of the clusters of SNPs. These are SNPs that weren't `genome-1/2` mutations missing from a tissue or SNPs likely on both backgrounds. 
+Now, lets look at the remainder of the clusters of SNPs. These are SNPs that actually clustered with other variants. 
 
-```{r Remaining Clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
+```{r Multi SNP Clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
 
 twentyfive.percent.or.more.clusters.df %>% 
-  filter(!cluster %in% c("6", "9", "12", "13", "16")) %>% 
+  filter(n > 1) %>% 
     ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
-      geom_line(data = filter(twentyfive.percent.or.more.clusters.df, !cluster %in% c("6", "9", "12", "13", "16")),
+      geom_line(data = filter(twentyfive.percent.or.more.clusters.df, n > 1),
                 aes(x = factor(Tissue, levels = tissue_order), y = AF, group = SNP, col = (cluster)), size = 1) +
       geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
       facet_wrap(~cluster_size) + 
@@ -285,76 +296,91 @@ twentyfive.percent.or.more.clusters.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
-
 ```
 
-```{r Multi SNP Clusters aboveclear corr, fig.align='center', fig.width=19, fig.height=10, echo=T}
+All of these look like reasonable clusters, so I'll annotate the variant data frame with these new clusters (subclonal haplotypes). I'll also try to guess if these are on the background of `Genome-1` or `Genome-2` if it's possible.
+
+```{r Annotate Multi SNP Clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
 
 # Genome-1 
 cluster.1.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(2, 19)) %>% 
+  filter(cluster %in% c(1)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Genome-1 
 cluster.2.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(18)) %>% 
+  filter(cluster %in% c(11)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Genome-1 
 cluster.3.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(20)) %>% 
+  filter(cluster %in% c(12)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Genome-2
 cluster.4.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(15)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Genome-2
-cluster.5.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(3)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-# Genome-2
-cluster.6.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(14)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Genome-2
-cluster.7.snps = twentyfive.percent.or.more.clusters.df %>% 
+cluster.5.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(16)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# Genome-2
+cluster.6.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(17)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# Genome-2
+cluster.7.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(19)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # ? 
 cluster.8.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(7)) %>% 
+  filter(cluster %in% c(20)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # ? 
 cluster.9.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(1)) %>% 
+  filter(cluster %in% c(3)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# ? 
+cluster.10.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(5)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+# ? 
+cluster.11.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(7)) %>% 
   pull(SNP) %>% 
   unique(.)
   
 # Annotate the labeled data frame with what's possible here
 updated.haplotype.df = updated.haplotype.df %>%
-  mutate(Background = case_when(SNP %in% cluster.1.snps ~ "genome-1",
-                                SNP %in% cluster.2.snps ~ "genome-1",
-                                SNP %in% cluster.3.snps ~ "genome-1",
-                                SNP %in% cluster.4.snps ~ "genome-2",
-                                SNP %in% cluster.5.snps ~ "genome-2",
-                                SNP %in% cluster.6.snps ~ "genome-2",
-                                SNP %in% cluster.7.snps ~ "genome-2",
+  mutate(Background = case_when(SNP %in% cluster.1.snps ~ "unknown",
+                                SNP %in% cluster.2.snps ~ "unknown",
+                                SNP %in% cluster.3.snps ~ "unknown",
+                                SNP %in% cluster.4.snps ~ "unknown",
+                                SNP %in% cluster.5.snps ~ "unknown",
+                                SNP %in% cluster.6.snps ~ "unknown",
+                                SNP %in% cluster.7.snps ~ "unknown",
                                 SNP %in% cluster.8.snps ~ "unknown",
                                 SNP %in% cluster.9.snps ~ "unknown",
+                                SNP %in% cluster.10.snps ~ "unknown",
+                                SNP %in% cluster.11.snps ~ "unknown",
                                 TRUE ~ Background)) %>% 
   mutate(Haplotype = case_when(SNP %in% cluster.1.snps ~ "cluster 1",
                                SNP %in% cluster.2.snps ~"cluster 2",
@@ -365,52 +391,29 @@ updated.haplotype.df = updated.haplotype.df %>%
                                SNP %in% cluster.7.snps ~ "cluster 7",
                                SNP %in% cluster.8.snps ~ "cluster 8",
                                SNP %in% cluster.9.snps ~ "cluster 9",
+                               SNP %in% cluster.10.snps ~ "cluster 10",
+                               SNP %in% cluster.11.snps ~ "cluster 11",
                                TRUE ~ Haplotype)) 
 
 ```
 
-What clusters are left? There are three with a single mutation. None of these single mutations seem all that important. There are some mutations that are probably in the 3' and 5' UTR. The other mutation is probably synonymous, but it's in P/V/C, so it could interrupt another reading frame. We'll keep these in mind for later. 
+### Haplotypes >= 5% and < 25% 
 
-```{r Single Mutations, fig.align='center', fig.width=12, fig.height=6, echo=T}
-
-sublonal.so.far = updated.haplotype.df %>% 
-  filter(Haplotype == "subclonal") %>% 
-  pull(SNP)
-
-twentyfive.percent.or.more.clusters.df %>% 
-  filter(SNP %in% sublonal.so.far) %>%
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
-      geom_line(data = filter(twentyfive.percent.or.more.clusters.df, SNP %in% sublonal.so.far),
-                aes(x = factor(Tissue, levels = tissue_order), y = AF, group = SNP, col = (cluster)), size = 1) +
-      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
-      facet_wrap(~cluster_size) + 
-      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Haplotype", col = "Cluster") +
-      theme_bw(20) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
-```
-
-### Haplotypes < 25% and > 5% 
-
-Most of these will be challenging to haplotype. I'll only try to specify the cluster that seem the most clear cut. 
+Now, I'll move onto the next bin. These are mutations that reach at least 5% in one tissue but weren't part of the previous analysis. Most of these will be challenging to haplotype due to noise. I'll only try to specify the clusters that seem the most clear cut. 
 
 ```{r Twentyfive percent or fewer clusters, fig.align='center', fig.width=19, fig.height=15, echo=T}
 
 twentyfive.percent.or.fewer.snps = expanded.df %>% 
   filter(!SNP %in% twentyfive.percent.or.more.snps) %>% 
   filter(Haplotype == "subclonal") %>% 
-  filter(AF < 0.25 & AF > 0.05) %>%
+  filter(AF < 0.25 & AF >= 0.05) %>%
   pull(SNP) %>% 
   unique(.)
 
 # Cluster the SNPs
 twentyfive.percent.or.fewer.clusters.df = cluster.snps(list.of.snps = twentyfive.percent.or.fewer.snps, 
                                       snp.df = expanded.df, 
-                                      n.clusters = 30)
+                                      n.clusters = 40)
 
 
 # Mean of each tissue
@@ -436,9 +439,11 @@ twentyfive.percent.or.fewer.clusters.df %>%
 
 ```
 
-```{r Promising low-frequency clusters, fig.align='center', fig.width=19, fig.height=8, echo=T}
+Most of these aren't very clear cut clusters. I took the 8 that looked the most promising.
 
-promising.subclonal.clusters = c(6, 7, 4, 25, 20, 17)
+```{r Promising low-frequency clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
+
+promising.subclonal.clusters = c(1, 13, 2, 23, 25, 5, 6, 8)
 
 twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% promising.subclonal.clusters) %>% 
@@ -456,50 +461,69 @@ twentyfive.percent.or.fewer.clusters.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
+```
 
-# Unknown 
-cluster.10.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(17)) %>% 
+```{r Annotate Remaining Clusters}
+
+cluster.12.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(1)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Unknown
-cluster.11.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+cluster.13.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(13)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+cluster.14.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(2)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+cluster.15.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(23)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+cluster.16.snps = twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% c(25)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Unknown
-cluster.12.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(20)) %>% 
+cluster.17.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(5)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Unknown
-cluster.13.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(7)) %>% 
+cluster.18.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(6)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-# Genome-1
-cluster.14.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(4,6)) %>% 
+cluster.19.snps = twentyfive.percent.or.fewer.clusters.df %>% 
+  filter(cluster %in% c(8)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Annotate the labeled data frame with what's possible here
 updated.haplotype.df = updated.haplotype.df %>%
-  mutate(Background = case_when(SNP %in% cluster.10.snps ~ "unknown",
-                                SNP %in% cluster.11.snps ~ "unknown",
-                                SNP %in% cluster.12.snps ~ "unknown",
+  mutate(Background = case_when(SNP %in% cluster.12.snps ~ "unknown",
                                 SNP %in% cluster.13.snps ~ "unknown",
-                                SNP %in% cluster.14.snps ~ "genome-1",
+                                SNP %in% cluster.14.snps ~ "unknown",
+                                SNP %in% cluster.15.snps ~ "unknown",
+                                SNP %in% cluster.16.snps ~ "unknown",
+                                SNP %in% cluster.17.snps ~ "unknown",
+                                SNP %in% cluster.18.snps ~ "unknown",
+                                SNP %in% cluster.19.snps ~ "unknown",
                                 TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(SNP %in% cluster.10.snps ~ "cluster 10",
-                               SNP %in% cluster.11.snps ~ "cluster 11",
-                               SNP %in% cluster.12.snps ~ "cluster 12",
+  mutate(Haplotype = case_when(SNP %in% cluster.12.snps ~ "cluster 12",
                                SNP %in% cluster.13.snps ~ "cluster 13",
                                SNP %in% cluster.14.snps ~ "cluster 14",
+                               SNP %in% cluster.15.snps ~ "cluster 15",
+                               SNP %in% cluster.16.snps ~ "cluster 16",
+                               SNP %in% cluster.17.snps ~ "cluster 17",
+                               SNP %in% cluster.18.snps ~ "cluster 18",
+                               SNP %in% cluster.19.snps ~ "cluster 19",
                                TRUE ~ Haplotype)) 
 
 ```
@@ -523,7 +547,7 @@ mutations.never.above.5perc = updated.haplotype.df %>%
   filter(Background == 'subclonal') %>% 
   group_by(SNP) %>% 
   summarise(Max = max(AF)) %>% 
-  filter(Max <= 0.05) %>% 
+  filter(Max < 0.05) %>% 
   pull(SNP) %>% 
   unique()
 
@@ -532,7 +556,7 @@ mutations.with.info = updated.haplotype.df %>%
   filter(Background != 'subclonal') %>% 
   pull(SNP) %>% 
   unique()
-print(paste("There are ", length(mutations.with.info), "that have at been clustered."))
+print(paste("There are", length(mutations.with.info), "that have been clustered."))
 
 
 # Mutations that are left, but are above 5% some of the time. 
@@ -551,7 +575,7 @@ updated.haplotype.df %>%
 
 ### All Current Haplotype Clusters 
 
-Here are the frequency of all current haplotypes in the 13 tissue samples. 
+Here are the frequency of all current haplotypes in the 15 tissue samples. 
 
 ```{r All Current Clusters, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
 
@@ -573,6 +597,11 @@ haplotype.order = c("cluster 1",
                     "cluster 12",
                     "cluster 13",
                     "cluster 14", 
+                    "cluster 15",
+                    "cluster 16",
+                    "cluster 17",
+                    "cluster 18", 
+                    "cluster 19", 
                     "genome-1-1")
   
 
@@ -597,7 +626,6 @@ tissue.mean = updated.haplotype.df %>%
          Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
   rename("AF" = AF.mean, "Genotype" = Haplotype)
 
-
 haplotype.mean = expanded.df %>% 
   group_by(Tissue, Haplotype) %>% 
   summarize(AF = mean(AF))
@@ -618,30 +646,11 @@ expanded.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
-ggsave("../../results/figures/all-current-clusters.png", width = 20, height = 12, dpi = 300)
+# ggsave("../../results/figures/all-current-clusters.png", width = 20, height = 12, dpi = 300)
 
 ```
 
 ```{r, Write out, echo=T}
-
-updated.haplotype.df = updated.haplotype.df %>% 
-  mutate(Background = case_when(Haplotype == "cluster 1" ~ "genome-1",
-                                Haplotype == "cluster 2" ~ "genome-1",
-                                Haplotype == "cluster 3" ~ "genome-1",
-                                Haplotype == "cluster 4" ~ "genome-1",
-                                Haplotype == "cluster 5" ~ "genome-2",
-                                Haplotype == "cluster 6" ~ "genome-2",
-                                Haplotype == "cluster 7" ~ "genome-2",
-                                Haplotype == "cluster 8" ~ "genome-2",
-                                Haplotype == "cluster 9" ~ "genome-1",
-                                Haplotype == "cluster 10" ~ "genome-2",
-                                Haplotype == "cluster 11" ~ "genome-1",
-                                Haplotype == "cluster 12" ~ "genome-1",
-                                Haplotype == "cluster 13" ~ "genome-1",
-                                Haplotype == "cluster 14" ~ "genome-1",
-                                TRUE ~ Background))
-
-head(updated.haplotype.df)
 
 write_csv(updated.haplotype.df, output.path)
 

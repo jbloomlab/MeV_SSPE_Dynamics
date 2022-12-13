@@ -17,7 +17,7 @@ output:
 
 The goal of this notebook is to establish the phylogenetic relationship between the haplotypes identified in notebook #4. This will help make a simple phylogenetic tree of the haplotypes in the next notebook. 
 
-To accomplish this, I'm going to use a combination of the 'pigeon-hole principle' on the frequencies of haplotypes in each compartment, as well as the counts of briding reads between haplotypes. 
+To accomplish this, I'm going to use a combination of the 'pigeon-hole principle' on the frequencies of haplotypes in each compartment, as well as the counts of bridging reads between haplotypes. 
 
 ```{r Setup, include=FALSE}
 require("knitr")

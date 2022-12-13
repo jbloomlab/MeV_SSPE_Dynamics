@@ -1,9 +1,10 @@
+"""
 ### ======= Process variants and assign genotypes ======= ###
-#
+This snakemake file runs a series of R notebooks to process the variants and assign haplotypes.
+
 # Author: Will Hannon 
 # Email: wwh22@uw.edu
-#
-
+"""
 
 rule quality_control:
     """
@@ -31,7 +32,6 @@ rule identify_backgrounds:
         incsv=join(config['variant_dir'], "filtered_variants.csv"),
         outcsv=join(config['variant_dir'], "genotyped_variants.csv"),
         annotations=config['MeVChiTok']['annotations'],
-        samples=config['samples']['file']
     conda: "../envs/r.yml"
     script: "../notebooks/identify-backgrounds.Rmd"
 
@@ -48,14 +48,13 @@ rule subclonal_haplotypes:
         incsv=join(config['variant_dir'], "genotyped_variants.csv"),
         outcsv=join(config['variant_dir'], "clustered_variants.csv"),
         annotations=config['MeVChiTok']['annotations'],
-        samples=config['samples']['file']
     conda: "../envs/r.yml"
     script: "../notebooks/cluster-subclonal-mutations.Rmd"
 
 
-rule genotype_subclonals:
+rule determine_haplotype_backgrounds:
     """
-    Alison Feder helped make a principled way to assign SNPs to genome 1 or 2 backgrounds. 
+    Alison Feder helped make a principled way to assign SNPs to Genome 1 or 2 backgrounds. 
     """
     input:
         join(config['bridging_dir'], "genotyped.csv"),

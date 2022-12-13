@@ -29,48 +29,39 @@ knitr::opts_chunk$set(echo = FALSE)
 ## List of all packages needed
 
 packages = c("tidyverse", "UpSetR")
-# ## Check that packages are installed, if not, install them
-# installed_packages <- packages %in% rownames(installed.packages())
-# if (any(installed_packages == FALSE)) {
-#   
-#   install.packages(packages[!installed_packages])
-# }
-# ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
+
+The data used in this notebook are the variant calls collated from `varscan` and `lofreq`. Variant were called relative the `SSPE` consensus genome that incorporates SNPs present at >90% frequency in more than 12/15 total brain samples. We consider these SNPs to be 'fixed' and 'ancestral' to all viral sequences isolated from the brain.
 
 ```{r Inputs, echo=T}
 
 ## ==== File paths input data ==== ##
 
-# Variant data parsed from from lofreq, ivar, and varscan VCFs
-variant.data = "../../results/variants/variants.csv"
-
-# variant.data = snakemake@input[[1]]
+# Variant data parsed from from lofreq and varscan VCF files
+# variant.data = "../../results/variants/variants.csv"
+variant.data = snakemake@input[[1]]
 
 ```
+
+This notebook produces a filtered list of variants. These are variants that are present in both `varscan` and `lofreq`.
 
 ```{r Outputs, echo=T}
 
 ## ==== File paths output data ==== ##
 
-# Path to save the figures for lab meeting 
-output.path = "../../results/variants/filtered_variants.csv"
-
-# output.path = snakemake@params[["outcsv"]]
-
-# if (!dir.exists(output.path)) {
-#   dir.create(file.path(output.path), showWarnings = FALSE)
-# }
-
+# Variant calls present in both lofreq and varscan
+# output.path = "../../results/variants/filtered_variants.csv"
+output.path = snakemake@params[['outcsv']]
+  
 ```
 
-## Processing the variant data
+## Processing Variant Calls
 
-I used three different variant callers to identify mutations in the measles virus genome. In the absence of biological replicates, this is a way to control for issues in the variant calling pipelines that could result in spurious variants. In addition to these different variant calling approaches, I've set a cutoff of `200X coverage` and a minimum allele frequency of `2% of reads`. 
+I used two different variant callers to identify mutations in the measles virus genome. In the absence of biological replicates, this is a way to control for issues in the variant calling pipelines that could result in spurious variants. In addition to these different variant calling approaches, I've set a cutoff of `200X coverage` and a minimum allele frequency of `2% of reads`. 
 
-To identify a set of mutations to go forward with, I'll combine the mutations from each variant caller and control for SNPs that might be lower frequency in a single sample due to low coverage. 
+To identify a set of mutations to go forward with, I'll combine the mutations from each variant caller in order to handle SNPs that might be lower frequency in a single sample due to low coverage. 
 
 ```{r Process Data, warning=F, message=F, echo=T}
 
@@ -90,18 +81,7 @@ lofreq.variant.df = read_csv(variant.data, show_col_types = FALSE) %>%
   filter(DP >= min_DP) %>% 
   filter(AF >= min_AF)
 
-# Import ivar data and filter 
-ivar.variant.df = read_csv(variant.data, show_col_types = FALSE) %>% 
-  filter(Caller == 'ivar') %>% 
-  mutate(SNP = paste0(REF, POS, ALT)) %>% 
-  mutate(Type = case_when(nchar(REF) > 1 ~ "Del",
-                          nchar(ALT) > 1 ~ "Ins",
-                          nchar(REF) == 1 ~ "SNP")) %>% 
-  filter(Type == "SNP") %>% 
-  filter(DP >= min_DP) %>% 
-  filter(AF >= min_AF)
-
-# Import lofreq data and filter 
+# Import varscan data and filter 
 varscan.variant.df = read_csv(variant.data, show_col_types = FALSE) %>% 
   filter(Caller == 'varscan') %>% 
   mutate(SNP = paste0(REF, POS, ALT)) %>% 
@@ -114,7 +94,7 @@ varscan.variant.df = read_csv(variant.data, show_col_types = FALSE) %>%
 
 ```
 
-Comfortingly, there is a large overlap between the variants called in the three approaches. I will take the intersection of these three approaches for the downstream analysis.
+Reassuringly, there is a large overlap between the variants called in the two approaches. I will take the intersection of these three approaches for the downstream analysis.
 
 ```{r Caller Comparison, fig.align='center', fig.width=10, fig.height=5}
 
@@ -122,9 +102,7 @@ combined.variants.df = rbind(
   
 mutate(lofreq.variant.df, Approach = "lofreq"),
 
-mutate(varscan.variant.df, Approach = "varscan"), 
-
-mutate(ivar.variant.df, Approach = "ivar")
+mutate(varscan.variant.df, Approach = "varscan")
 
 )
 
@@ -136,22 +114,18 @@ combined.variants.df %>%
   pivot_wider(names_from = "Approach", values_from = "Tally", values_fill = 0) %>% 
   as.data.frame(row.names = Identifier) %>%
   upset(., sets = c("lofreq",
-                          "varscan",
-                          "ivar"), sets.bar.color = "#56B4E9",
+                    "varscan"), sets.bar.color = "#56B4E9",
       order.by = "freq", empty.intersections = "on", text.scale = 1.5)
 
 
 ```
 
-For the final set of trusted variants I'm going to ignore `ivar`. I've found that this variant caller sometimes produces unexpected annotations.
-
-Some mutations appear in both the `varscan` and `lofreq` data sets, but are present in one particular tissue in one approach and absent from that same tissue in another. These are likely real variants that are missed by one approach due a particular filter. I'll correct for this by resolving the mutations are called by both approaches in some tissues, but missing from one approach in a specific tissue. I'll write these out to a file for other analyses (`final_variants.csv`). 
+Some mutations appear in both the `varscan` and `lofreq` data sets, but are present in one particular tissue in one approach and absent from that same tissue in another. These are likely real variants that are missed by one approach due a particular filter in the given tool. I'll correct for this by resolving the mutations are called by both approaches in some tissues, but missing from one approach in a specific tissue. I'll write these out to a file for downstream analyses (`final_variants.csv`). 
 
 ```{r Get final set of variants, message=F, warning=F, echo=T}
 
 # Total unique variants called in both lofreq and varscan
 total.variants = combined.variants.df %>% 
-  filter(Caller != "ivar") %>% # Not considering `ivar`
   select(SNP, Caller) %>% 
   distinct() %>% 
   group_by(SNP) %>% 
@@ -162,7 +136,6 @@ total.variants = combined.variants.df %>%
 
 # Then, I'll figure out how many of these are missing in a specific tissue in one method
 missing.from.one = combined.variants.df %>% 
-  filter(Caller != "ivar") %>% 
   filter(SNP %in% total.variants) %>% 
   select(SNP, Accession, Caller) %>% 
   group_by(SNP, Accession) %>% 
@@ -201,8 +174,6 @@ print(paste("In total, there are", length(unique(pull(selected.variants.df, SNP)
 ```{r Write out selected variants, echo=T}
 
 print(paste("Writing out the results to", output.path))
-
-# write_csv(selected.variants.df, paste(output.path, "filtered_variants.csv", sep = "/"))
 
 write_csv(selected.variants.df, output.path)
 
