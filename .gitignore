@@ -22,3 +22,7 @@ results/*
 !results/variants
 results/variants/*
 !results/variants/variants.csv
+!results/variants/filtered_variants.csv
+!results/variants/genotyped_variants.csv
+!results/variants/clustered_variants.csv
+!results/notebooks
