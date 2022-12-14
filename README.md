@@ -18,3 +18,9 @@ Using the filtered and collated variant calls, we set out to determine the linka
 To vallidate these haplotypes, we counted the occurence of reads that bridged positions with multiple variants in our putitive haplotypes. Using these bridging reads, combined with a frequency-based exclusion approach, we vallidated our haplotypes and determined the phylogenetic relationship between them.
 
 _You can see a graphical represenation of this pipeline [here](dag.pdf)_
+
+## Repo Organization
+
+`config`: Contains the file that configure the analysis (i.e., the reference genome)
+`workflow`: - `envs`: Conda files for creating environments - `rules`: Snakemake files with pipeline rules - `script`: Scripts used by the pipeline - `notebooks`: Notebooks with analysis and figures
+`results`: - `variants`: Variant calls - (unprocessed)[results/variants/variants.csv], (filtered)[results/variants/filtered_variants.csv], (genotyped into G1 and G2)[results/variants/genotyped_variants.csv], and (clustered into haplotypes)[results/variants/clustered_variants.csv] - `notebooks`: HTML files with the knit notebook files and notes.
