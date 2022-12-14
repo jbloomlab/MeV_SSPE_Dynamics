@@ -50,21 +50,3 @@ rule subclonal_haplotypes:
         annotations=config['MeVChiTok']['annotations'],
     conda: "../envs/r.yml"
     script: "../notebooks/cluster-subclonal-mutations.Rmd"
-
-
-rule determine_haplotype_backgrounds:
-    """
-    Alison Feder helped make a principled way to assign SNPs to Genome 1 or 2 backgrounds. 
-    """
-    input:
-        join(config['bridging_dir'], "genotyped.csv"),
-        join(config['notebook_dir'], "cluster-subclonal-haplotypes.html")
-    output:
-        join(config['notebook_dir'], "genotype-subclonal-snps.html")
-    params:
-        incsv=join(config['variant_dir'], "clustered_variants.csv"),
-        outcsv=join(config['variant_dir'], "assigned_variants.csv"),
-        annotations=config['MeVChiTok']['annotations'],
-        samples=config['samples']['file']
-    conda: "../envs/r.yml"
-    script: "../notebooks/genotype-subclonal-snps.Rmd"

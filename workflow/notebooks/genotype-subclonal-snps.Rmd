@@ -29,12 +29,6 @@ knitr::opts_chunk$set(echo = FALSE)
 ## List of all packages needed
 packages = c("tidyverse", "foreach", "emdbook")
 
-## Check that packages are installed, if not, install them
-# installed_packages <- packages %in% rownames(installed.packages())
-# if (any(installed_packages == FALSE)) {
-#   install.packages(packages[!installed_packages])
-# }
-
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
@@ -45,16 +39,16 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Data from lofreq and varscan labeled with subclonal haplotypes
-updated.data = "../../results/variants/clustered_variants.csv"
-# updated.data = snakemake@params[["incsv"]]
+# updated.data = "../../results/variants/clustered_variants.csv"
+updated.data = snakemake@params[["incsv"]]
 
 # Counts of SNPs on reads belonging to genome-1 or genome-2
-reads.data = "../../results/bridging/genotyped.csv"
-# reads.data = snakemake@input[[1]]
+# reads.data = "../../results/bridging/genotyped.csv"
+reads.data = snakemake@input[[1]]
   
 # Annotations for MeV genes
-annotations.filepath = "../../config/annotations.csv"
-# annotations.filepath = snakemake@params[["annotations"]]
+# annotations.filepath = "../../config/annotations.csv"
+annotations.filepath = snakemake@params[["annotations"]]
 
 ```
 
@@ -63,9 +57,8 @@ annotations.filepath = "../../config/annotations.csv"
 ## ==== File paths output data ==== ##
 
 # Path to save the results
-output.path = "../../results/variants/assigned_variants.csv"
-
-# output.path = snakemake@params[["outcsv"]]
+# output.path = "../../results/variants/assigned_variants.csv"
+output.path = snakemake@params[["outcsv"]]
 
 ```
 
@@ -283,7 +276,7 @@ left_join(subclonal.assignments, genotyping.df) %>%
     scale_x_continuous(limits=c(0,16000)) +
     theme(legend.position = "none") 
 
-ggsave("../../results/figures/subclonal-snps-in-g1-and-g2.png", width = 10, height = 8, dpi = 300)
+# ggsave("../../results/figures/subclonal-snps-in-g1-and-g2.png", width = 10, height = 8, dpi = 300)
 
 ```
 

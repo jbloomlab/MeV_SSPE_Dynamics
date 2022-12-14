@@ -17,3 +17,31 @@ The notebooks are numbered based on their order in the analysis. While the order
 3. `cluster-subclonal-mutations.Rmd`
 
 > In this notebook, I take the analysis in the previous notebook farther to see if we can cluster mutations by frequency even if they aren't found in every tissue sample. I use this analysis to identify subclonal haplotypes.
+
+4. `genotype-subclonal-snps.Rmd`
+
+> In this notebook, I use bridging reads and a probabalistic approach written by Alison Feder to assign SNPs to either `Genome 1` or `Genome 2`. This also assigns haplotypes to their most like genotype.
+
+5. `establish-haplotype-relationship.Rmd`
+
+> In this notebook, use a combination of the 'pigeon-hole principle' and bridging reads to determine how the clusters of mutations (putitive haplotypes) are likely related to one another.
+
+6. `spatial-tissue-clustering.Rmd`
+
+> In this notebook, examine how variant populations in different tissues relate to one another in the context of space. For example, are nearby tissues more similar than far away tissues?
+
+7. `mutation-effect-distribution.Rmd`
+
+> In this notebook, I look for patterns in the distribution of mutations in different haplotypes. For example, are there clear clusters of ADAR mutations?
+
+8. `haplotype-phylogenetic-tree.Rmd`
+
+> In this notebook, I work on different ways to visualize the phylogenetic tree of haplotypes.
+
+9. `tissue-level-diversity.Rmd`
+
+> In this notebook, I calculate nucleotide diversity in different tissue compartments.
+
+10. `polish-current-haplotypes.Rmd`
+
+> In this notebook, I use bridging reads to see if I can assign unclustered mutations to our current haplotypes.
