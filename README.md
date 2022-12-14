@@ -17,6 +17,4 @@ Using the filtered and collated variant calls, we set out to determine the linka
 
 To vallidate these haplotypes, we counted the occurence of reads that bridged positions with multiple variants in our putitive haplotypes. Using these bridging reads, combined with a frequency-based exclusion approach, we vallidated our haplotypes and determined the phylogenetic relationship between them.
 
-## Pipeline Overview
-
-![pipeline](dag.pdf)
+_You can see a graphical represenation of this pipeline [here](dag.pdf)_
