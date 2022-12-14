@@ -22,5 +22,12 @@ _You can see a graphical represenation of this pipeline [here](dag.pdf)_
 ## Repo Organization
 
 `config`: Contains the file that configure the analysis (i.e., the reference genome)
-`workflow`: - `envs`: Conda files for creating environments - `rules`: Snakemake files with pipeline rules - `script`: Scripts used by the pipeline - `notebooks`: Notebooks with analysis and figures
-`results`: - `variants`: Variant calls - (unprocessed)[results/variants/variants.csv], (filtered)[results/variants/filtered_variants.csv], (genotyped into G1 and G2)[results/variants/genotyped_variants.csv], and (clustered into haplotypes)[results/variants/clustered_variants.csv] - `notebooks`: HTML files with the knit notebook files and notes.
+`workflow`:
+
+- `envs`: Conda files for creating environments
+- `rules`: Snakemake files with pipeline rules
+- `script`: Scripts used by the pipeline
+- `notebooks`: Notebooks with analysis and figures
+  `results`:
+- `variants`: Variant calls (unprocessed)[/results/variants/variants.csv], (filtered)[/results/variants/filtered_variants.csv], (genotyped into G1 and G2)[/results/variants/genotyped_variants.csv], and (clustered into haplotypes)[/results/variants/clustered_variants.csv]
+- `notebooks`: HTML files with the knit notebook files and notes.
