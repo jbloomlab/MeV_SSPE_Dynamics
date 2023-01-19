@@ -1,0 +1,215 @@
+---
+title: "MACHINA Analysis"
+author: "Will Hannon"
+date: "1/18/2023"
+output: html_document
+---
+
+The goal of this notebook is to recreate Alison's MACHINA analysis.
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse", "foreach", "cowplot", "ggforce", "ggnetwork", "network", "RColorBrewer", "igraph")
+
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+# Data from lofreq and varscan labeled with G1 and G2 mutations
+expanded.data = "./expanded_snps.csv"
+
+# Read in the variants with G1, G2, and G1-1 labeled
+expanded.df = read_csv(expanded.data, show_col_types = FALSE)
+
+
+```
+
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+# Data from lofreq and varscan labeled with G1 and G2 mutations
+machina.input.data = "./spruce_frequencies.tsv"
+# Output data from MACHINA 
+machina.output.data = "./spruce_out.tsv"
+
+```
+
+```{r Frequency of Subclonal SNPs}
+
+expanded.df %>%
+  filter(Haplotype == "subclonal") %>%
+  arrange(Tissue) %>%  
+    ggplot(aes(x = Tissue, y = AF, group = SNP)) + 
+    geom_point()+ 
+    geom_path() +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+
+```
+Prepare the data for MACHINA by using the mean allele frequency +/- the binomial variance, times a downscaling factor.
+
+```{r Format Data for MACHINA}
+
+# Make tissue index
+Tissue_index = expanded.df %>% 
+  select(Tissue) %>% 
+  distinct() %>% 
+  mutate(tind = 1:n() - 1)
+
+# Make cluster index 
+Cluster_index = expanded.df %>% 
+  select(Haplotype) %>% 
+  distinct() %>% 
+  filter(!Haplotype %in% c("both", "subclonal")) %>% 
+  mutate(cind = 1:n() - 1) %>%
+  add_row(Haplotype = "Anc", cind = 17)
+
+# Calculate MAF, var, lb, and ub for MACHINA
+var.margin = 0.18
+snpinf = expanded.df %>%
+  group_by(Haplotype, Tissue) %>% 
+  filter(!Haplotype %in% c("both", "subclonal")) %>% 
+  # use this formulation for cluster allele frequency, because it puts less weight on low read depth positions
+  summarize(MAF = sum(AF * DP)/sum(DP),
+            var = MAF * (1 - MAF)) %>% 
+  # MACHINA wants an upper and lower bound on what the allele frequencies are
+  mutate(lb = pmax(0, MAF - var.margin * var), ub = pmin(1, MAF + var.margin * var))
+ 
+# Add the ancestor back in or it won't connect g1 and g2
+withanc = bind_rows(snpinf, 
+                    Tissue_index %>%
+                      select(-tind) %>% 
+                      mutate(Haplotype = "Anc", MAF = NA, SD = NA, lb = 1, ub = 1)
+                    )
+
+# Merge the average cluster frequencies with the index information that spruce wants
+toPrint = left_join(left_join(withanc, Tissue_index), Cluster_index) %>% 
+    ungroup() %>%
+    # need to substitute out spaces
+    mutate(Tissue = gsub(" ", "_", Tissue)) %>%
+    mutate(Haplotype = gsub(" ", "_", Haplotype)) %>%
+    mutate(sind = tind, sample = Tissue) %>%
+    select(tind, Tissue, sind, sample, cind, Haplotype, lb, ub)  %>% 
+    arrange(tind, cind) %>% 
+    mutate(ub = pmax(lb, ub)) 
+
+# Header needs to specify these variables
+write(
+  paste0(
+    nrow(Tissue_index),
+    "\n", nrow(Tissue_index),
+    "\n", nrow(Cluster_index),
+    "\n#", collapse = "" ),
+  machina.input.data
+)
+
+# Then write the cluster frequencies 
+write.table(toPrint,
+            machina.input.data,
+            sep = "\t", 
+            quote = FALSE, 
+            row.names = FALSE,
+            col.names = FALSE,
+            append = TRUE)
+
+```
+
+Now, run the following command in an environment with MACHINA installed. 
+
+```{r Run Machina}
+
+print(paste0("generatemutationtrees ", machina.input.data, "> ", machina.output.data))
+
+```
+
+```{r Color Palletes}
+
+## Set the Haplotype Colors
+# G1
+g2s = brewer.pal(6, "YlOrRd")
+names(g2s) = c("cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 10", "genome-2")
+# G2
+g1s = brewer.pal(9, "Blues")
+names(g1s) = c( "cluster 1", "cluster 2", "cluster 3", "cluster 4", "cluster 11", "cluster 12", "cluster 14", "genome-1-1", "genome-1")
+# Cluster 9 and 13
+c913 = brewer.pal(8, "Purples")[c(7,8)]
+names(c913) = c("cluster 9", "cluster 13")
+# Combine
+hap.colors = c(g2s, g1s, c913)
+names(hap.colors ) = gsub(" ", "_", names(hap.colors ))
+hap.colors  =  c(hap.colors , "Anc" = "black")
+
+## Set the Compartment Colors 
+# Frontal Cortex
+FCs = c("Frontal Cortex 1", "Frontal Cortex 2", "Frontal Cortex 3")
+FCs.colors = brewer.pal(length(FCs), "Greens")
+names(FCs.colors) = FCs
+# Internal Compartments
+Internal = c("Cerebellum Nucleus", "Cerebellum", "Midbrain", "Internal Capsule", "Brain Stem", "UBS", "Hippocampus")
+Internal.colors = brewer.pal(length(Internal), "YlOrRd")
+names(Internal.colors) = Internal
+# Other Lobes
+Other =  c("Occipital Lobe", "Temporal Lobe", "Parietal Lobe")
+Other.colors = brewer.pal(length(Other), "Blues")
+names(Other.colors) = Other
+# Combine
+Compartment.cols = c(FCs.colors, Internal.colors, Other.colors)
+names(Compartment.cols) = gsub(" ", "_", names(Compartment.cols))
+
+```
+
+```{r Process Spruce Output}
+
+# Read in the output of MACHINA
+machina.output = readLines(machina.output.data)
+
+# Process the output trees into edges
+treenum = NA
+tree.df = foreach(i = 1:length(machina.output), .combine = "rbind") %do% {
+    toParse = machina.output[i]
+    if(grepl("^#", toParse)){ return(NULL) }
+    if(grepl("#trees", toParse)){ return(NULL) }
+    if(grepl("#edges", toParse)){ 
+        treenum = gsub("[0-9]+ \\#edges, ", "", toParse)
+        return(NULL) 
+    }
+    tibble(toParse) %>%
+      separate(toParse, into = c("from", "to"), sep = " ") %>% 
+        mutate(tree = treenum)
+}
+tree.df = tree.df %>% 
+  mutate(treenum = as.numeric(gsub("tree ", "", tree)))
+
+
+```
+
+```{r}
+
+ggnetwork(network(tree.df %>% filter(treenum <= 10), multiple = TRUE), by = "treenum")  %>%
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+    theme_blank() +
+    geom_edges(curvature = 0.15) +
+    geom_nodes(aes(fill = vertex.names), size = 10, pch = 21) +
+    scale_fill_manual(values = cols) +
+    geom_nodetext(aes(y = y - 0.06, label =  vertex.names), color = "black", size = 2) +
+    facet_wrap(~treenum) +
+    theme(legend.position = "none") 
+
+```
+
+
