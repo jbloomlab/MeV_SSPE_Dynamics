@@ -46,6 +46,7 @@ rule subclonal_haplotypes:
         join(config['notebook_dir'], "cluster-subclonal-haplotypes.html")
     params: 
         incsv=join(config['variant_dir'], "genotyped_variants.csv"),
+        ancestral=join(config['ref_dir'], "annotated_SSPE_consensus_snps.csv"),
         outcsv=join(config['variant_dir'], "clustered_variants.csv"),
         annotations=config['MeVChiTok']['annotations'],
     conda: "../envs/r.yml"
