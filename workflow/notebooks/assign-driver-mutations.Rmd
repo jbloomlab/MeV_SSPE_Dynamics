@@ -1,0 +1,278 @@
+---
+title: "6. Assign Driver Mutations"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to determine how subclonal 'driver' mutations fit on the tree. 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse", "foreach", "emdbook", "knitr")
+
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+# Data from lofreq and varscan labeled with subclonal haplotypes
+updated.data = "../../results/variants/polished_variants.csv"
+
+# Data from the count of bridging reads
+bridging.data = "../../results/bridging/bridging_reads.csv"
+
+# Data from Iris' driver mutations
+driver.mutations = "../../config/driver_mutations.csv"
+
+# Annotations for MeV genes
+annotations.filepath = "../../config/annotations.csv"
+
+```
+
+Lets load in the data from Iris. In total there are 13 possible driver mutations. However, some of these are fixed on the 'ancestor' or reference. If we exclude these, there are only 9 drivers that aren't fixed. 
+
+```{r What the Drivers}
+
+# Read in the annotated SNPs
+labeled.df = read_csv(updated.data, show_col_types = FALSE) 
+
+# Read in the bridging reads
+bridging.df = read_csv(bridging.data, show_col_types = FALSE)
+
+# Read in the Drivers
+driver.df = read_csv(driver.mutations, show_col_types = FALSE)  %>% 
+  mutate(SNP = paste0(REF, POS, ALT))
+
+labeled.df %>%
+  filter(SNP %in% driver.df$SNP) %>%
+  select(SNP, AA_Change, Gene, Haplotype_Name) %>%
+  distinct() %>% 
+  kable(., caption = "Non-ancestral 'Drivers'")
+
+```
+
+Of these 9 drivers, we're able to haplotype 3 of them, however, the remaining 6 lack phylogenetic context. Let's see what these are. 
+
+```{r Plot Unassigned Drivers, fig.align='center', fig.width=19, fig.height=10, echo=F, message=F}
+
+# Get the unassigned driver mutations
+unassigned.drivers = labeled.df %>%
+  filter(SNP %in% driver.df$SNP) %>%
+  filter(Haplotype_Name %in% c("subclonal", "both")) %>% 
+  pull(SNP)
+
+# Get the Haplotypes and Backgrounds for every SNP
+haplotypes.label = labeled.df %>% 
+  select(SNP, Haplotype_Name, Haplotype, Background) %>% 
+  distinct()
+
+# Expand the mutations to have a frequency for every tissue.
+expanded.df = labeled.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(labeled.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Get the mean frequency of the major genomes 
+tissue.mean = labeled.df %>% 
+  filter(Haplotype_Name %in% c("genome 01", "genome 2")) %>% 
+  group_by(Tissue, Haplotype_Name) %>% 
+  summarize(AF.mean = mean(AF, na.rm = TRUE), 
+            SD = sd(AF, na.rm = TRUE),
+            N = n()) %>% 
+  mutate(SE = SD / sqrt(N),
+         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
+         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
+  rename("AF" = AF.mean)
+
+# Tissue order - roughly by the location in the brain 
+tissue_order = c(
+  "SSPE 1", 
+  "SSPE 2",
+  "Frontal Cortex 2", 
+  "Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Parietal Lobe",
+  "Temporal Lobe", 
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Midbrain", 
+  "UBS",
+  "Brain Stem",
+  "Cerebellum",
+  "Cerebellum Nucleus"
+)
+
+expanded.df %>% 
+    filter(SNP %in% unassigned.drivers) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(aes(group = SNP)) +
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype_Name, fill = Haplotype_Name), alpha=0.2, colour = NA) +
+      facet_wrap(~SNP) + 
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+
+```
+
+We've already know about two of these SNPs - `C7036T` and `T7293C` - that we believe are on both genome-1 and genome-2. Of the remaining four *new* SNPs without phylogenetic context, only `G6775A` and `G7033T` are high-enough frequency to reasonable assign to a background. 
+
+## G7033T
+
+This is an interesting SNP because, like `C7036T`, it's a stop codon in the C-terminal domain of the Fusion protein. 
+
+```{r Coding Effect of G7033T}
+
+labeled.df %>% 
+  filter(SNP == "G7033T") %>% 
+  select(SNP, AA_Change, Gene) %>% 
+  distinct() %>% 
+  kable(., caption = "Coding Effect of G7033T")
+
+```
+
+There are three tissues that have this mutation at an appreciable frequency. 
+
+```{r Tissues with G7033T}
+
+labeled.df %>% 
+  filter(SNP == "G7033T") %>% 
+  filter(AF >= 0.05) %>% 
+  select(SNP, AA_Change, Gene, Tissue) %>% 
+  head() %>% 
+  kable(., caption = "Tissues with G7033T")
+
+tissues.to.filter = labeled.df %>% 
+  filter(SNP == "G7033T") %>% 
+  filter(AF >= 0.05) %>% 
+  select(SNP, AA_Change, Gene, Tissue) %>% 
+  pull(Tissue)
+
+```
+
+Are there any bridging reads in these tissues? Below, I filtered the bridging read counts for only reads that: 
+1. Overlap position 7033 
+2. Both snps are represented in more than 5% of bridging reads
+3. Are only from the three tissues above
+Then, I arranged them by the count of reads that contain both SNPs (`11`). 
+```{r Bridging reads for G7033T}
+
+bridging.df %>% 
+  filter(snp_1 == "7033" | snp_2 == "7033") %>% 
+  mutate(total = `00` + `10` + `01` + `11`) %>% 
+  filter(((`01` + `11`) >= 0.05) & ((`10` + `11`) >= 0.05)) %>% 
+  filter(Tissue %in% tissues.to.filter) %>% 
+  arrange(-`11`) %>% 
+  head() %>% 
+  kable(., caption = "Bridging reads for G7033T")
+
+```
+
+What's really interesting here is that there does appear to be strong evidence that this stop codon mutation (`F-526*`) is **not** linked to reads with the other possible stop codon driver at position `7036` (`F-527*`). This makes sense biologically if this mutation is selected for adaptive reasons. 
+
+```{r Exclusion from 7036}
+
+bridging.df %>% 
+  filter(snp_1 == "7033" | snp_2 == "7033") %>% 
+  mutate(total = `00` + `10` + `01` + `11`) %>% 
+  filter(((`01` + `11`) >= 0.05) & ((`10` + `11`) >= 0.05)) %>% 
+  filter(Tissue %in% tissues.to.filter) %>% 
+  arrange(-`11`) %>% 
+  filter(snp_1 == "7036" | snp_2 == "7036")  %>% 
+  kable(., caption = "Reads overlaping 7036")
+
+
+```
+
+## G6775A
+
+`G6775A` is another mutation in Fusion.
+
+```{r Coding Effect of G6775A}
+
+labeled.df %>% 
+  filter(SNP == "G6775A") %>% 
+  select(SNP, AA_Change, Gene) %>% 
+  distinct() %>% 
+  kable(., caption = "Coding Effect of G6775A")
+
+```
+
+Can we say anything about this SNP based on driving reads? 
+
+```{r G6775A Bridging Reads}
+
+tissues.to.filter = labeled.df %>% 
+  filter(SNP == "G6775A") %>% 
+  filter(AF >= 0.05) %>% 
+  select(SNP, AA_Change, Gene, Tissue) %>% 
+  pull(Tissue)
+
+bridging.df %>% 
+  filter(snp_1 == "6775" | snp_2 == "6775") %>% 
+  mutate(total = `00` + `10` + `01` + `11`) %>% 
+  filter(((`01` + `11`) >= 0.05) & ((`10` + `11`) >= 0.05)) %>% 
+  filter(Tissue %in% tissues.to.filter) %>% 
+  arrange(-`11`)  %>% 
+  head() %>% 
+  kable(., caption = "G6775A Bridging Reads")
+
+
+```
+
+Crudely, I'll try and identify 'forbidden' SNPs by taking positions that both have more than 100+ observations of reads where the SNPs aren't linked. 
+
+```{r G6775A Excluded edges}
+
+excluded.snps.df = bridging.df %>% 
+  filter(snp_1 == "6775" | snp_2 == "6775") %>% 
+  mutate(total = `00` + `10` + `01` + `11`) %>% 
+  filter(((`01` + `11`) >= 0.05) & ((`10` + `11`) >= 0.05)) %>% 
+  filter(Tissue %in% tissues.to.filter) %>% 
+  filter(`01` >= 100 & `10` >= 100) %>% 
+  select(snp_1, snp_2) 
+ 
+excluded.snps = c(excluded.snps.df$snp_1, excluded.snps.df$snp_2) 
+
+excluded.snps = unique(excluded.snps[which(excluded.snps != "6775")])
+
+labeled.df %>% 
+  filter(POS %in% excluded.snps) %>% 
+  filter(Tissue %in% tissues.to.filter) %>% 
+  select(SNP, AA_Change, Gene, AF, Tissue, Haplotype_Name, Background, Proposed_Background) %>% 
+  kable(., caption = "G6775A Excluded SNPs")
+
+
+```
+Other than being excluded from cluster 13, it's not super clear how to fit this mutation onto the phylogeny. 
