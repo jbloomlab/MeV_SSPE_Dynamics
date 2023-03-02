@@ -150,6 +150,43 @@ names(Compartment.cols) = gsub(" ", "_", names(Compartment.cols))
 
 ```
 
+```{r Haplotype and Tissue Order, echo=F}
+# Tissue order - roughly by the location in the brain 
+expanded_tissue_order = c(
+  "SSPE 1", 
+  "SSPE 2",
+  "Frontal Cortex 2", 
+  "Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Parietal Lobe",
+  "Temporal Lobe", 
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Midbrain", 
+  "Upper Brain Stem",
+  "Brain Stem",
+  "Cerebellum",
+  "Cerebellum Nucleus"
+)
+
+haplotype.order = c("cluster 1",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11",
+                    "cluster 12",
+                    "cluster 13",
+                    "cluster 14")
+```
+
+
 ### Genome 2
 
 What does this look like for Genome 2?
@@ -310,8 +347,18 @@ merged.depth.df = fread(merged.depth) %>%
 # Join the depth data to the allele frequencies
 expanded.depth.df = expanded.df %>% 
   select(!DP) %>% 
-  left_join(., distinct(select(labeled.df, POS, SNP, Accession)), by = c("SNP")) %>% 
-  left_join(., merged.depth.df, by = c("POS", "Accession"))
+  left_join(., distinct(select(labeled.df, POS, SNP, Tissue, Accession)), by = c("SNP", "Tissue")) %>% 
+  left_join(., merged.depth.df, by = c("POS", "Accession")) %>% 
+  # Rename the UBS
+  mutate(Tissue = if_else(Tissue == "UBS", "Upper Brain Stem", Tissue))
+
+# Amend C4573T in the Cerebellum to be the mean haplotype frequency
+g1.cerrebellum.mean = filter(haplotype.mean, Haplotype_Name == 'genome 01', Tissue == 'Cerebellum')$AF
+expanded.depth.df = expanded.depth.df %>% 
+  mutate(AF = case_when(
+    SNP == "C4573T" & Tissue == 'Cerebellum' ~ g1.cerrebellum.mean,
+    TRUE ~ AF
+  )) 
 
 # Make tissue index
 Tissue_index = expanded.depth.df %>% 
@@ -332,14 +379,14 @@ spruce.data.df = expanded.depth.df %>%
   filter(!Haplotype_Name %in% c("both", "subclonal")) %>% 
   group_by(Haplotype_Name, Tissue) %>% 
   # use this formulation for cluster allele frequency, because it puts less weight on low read depth positions
-  summarize(MAF = sum(AF * DP)/sum(DP),
+  summarize(MAF = mean(AF),
             min = min(AF), 
             max = max(AF)) %>% 
   # MACHINA wants an upper and lower bound on what the allele frequencies are
   mutate(lb = pmax(0, min), ub = pmin(1, max))
  
 spruce.data.df %>% 
-  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = MAF, group = Haplotype_Name, ymin=lb, ymax=ub)) + 
+  ggplot(aes(x = factor(Tissue, levels = expanded_tissue_order), y = MAF, group = Haplotype_Name, ymin=lb, ymax=ub)) + 
     geom_ribbon(alpha=0.2, colour = "grey") +
     geom_line() +
     facet_wrap(~Haplotype_Name) + 
@@ -360,6 +407,13 @@ spruce.data.alt.df = expanded.df %>%
   filter(!Haplotype_Name %in% c("both", "subclonal")) %>%
   # Add a psuedo-count to depth 
   mutate(DP = DP + 1) %>% 
+  # Add back the uncovered G1 SNP
+  mutate(AF = case_when(
+    SNP == "C4573T" & Tissue == 'Cerebellum' ~ g1.cerrebellum.mean,
+    TRUE ~ AF
+  )) %>% 
+  # Rename the UBS
+  mutate(Tissue = if_else(Tissue == "UBS", "Upper Brain Stem", Tissue)) %>% 
   # use this formulation for cluster allele frequency, because it puts less weight on low read depth positions
   summarize(MAF = sum(AF * DP)/sum(DP),
             var = sqrt(MAF * (1 - MAF) / (sum(DP) * down.wieght))) %>%
@@ -368,7 +422,7 @@ spruce.data.alt.df = expanded.df %>%
 
 
 spruce.data.alt.df %>% 
-  ggplot(aes(x = factor(Tissue, levels = tissue_order), y = MAF, group = Haplotype_Name, ymin=lb, ymax=ub)) + 
+  ggplot(aes(x = factor(Tissue, levels = expanded_tissue_order), y = MAF, group = Haplotype_Name, ymin=lb, ymax=ub)) + 
     geom_ribbon(alpha=0.2, colour = "grey") +
     geom_line() +
     facet_wrap(~Haplotype_Name) + 
@@ -379,7 +433,7 @@ spruce.data.alt.df %>%
 
 ```
 
-Currently, it's not clear exactly which method is optimal. We'll write these out in the correct format for MACHINA/SPRUCE to generate trees. 
+Currently, it's not clear exactly which method is optimal. One approach takes into account the depth in the tissue to get variance, the other takes into account the variance in freuency in each tissue. We'll stick with the latter fequency-based approach for now. 
 
 ```{r Write out Data}
 
