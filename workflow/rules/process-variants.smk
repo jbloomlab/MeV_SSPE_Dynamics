@@ -51,3 +51,41 @@ rule subclonal_haplotypes:
         annotations=config['MeVChiTok']['annotations'],
     conda: "../envs/r.yml"
     script: "../notebooks/cluster-subclonal-mutations.Rmd"
+
+
+rule determine_haplotype_backgrounds:
+    """
+    Alison Feder helped make a principled way to assign SNPs to Genome 1 or 2 backgrounds. 
+    """
+    input:
+        join(config['bridging_dir'], "genotyped.csv"),
+        join(config['notebook_dir'], "cluster-subclonal-haplotypes.html")
+    output:
+        join(config['notebook_dir'], "genotype-subclonal-snps.html")
+    params:
+        incsv=join(config['variant_dir'], "clustered_variants.csv"),
+        outcsv=join(config['variant_dir'], "assigned_variants.csv"),
+        annotations=config['MeVChiTok']['annotations']
+    conda: "../envs/r.yml"
+    script: "../notebooks/genotype-subclonal-snps.Rmd"
+
+
+rule establish_haplotype_relationship:
+    """
+    Use bridging reads and current haplotype assignments to establish relationships between haplotypes.
+    """
+    input:
+        join(config['bridging_dir'], "bridging_reads.csv"),
+        join(config['coverage_dir'], "merged.depth"),
+        join(config['notebook_dir'], "genotype-subclonal-snps.html")
+    output:
+        join(config['notebook_dir'], "establish-haplotype-relationship.html")
+    params: 
+        incsv=join(config['variant_dir'], "assigned_variants.csv"),
+        ancestral=join(config['ref_dir'], "annotated_SSPE_consensus_snps.csv"),
+        outcsv=join(config['variant_dir'], "polished_variants.csv"),
+        spruce=join(config['variant_dir'], "spruce_input.tsv"),
+        annotations=config['MeVChiTok']['annotations'],
+    conda: "../envs/r.yml"
+    script: "../notebooks/establish-haplotype-relationship.Rmd"
+

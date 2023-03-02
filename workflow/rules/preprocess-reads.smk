@@ -26,7 +26,7 @@ rule trim_adapters:
     Use fastp to trim the adapters from the reads.
 
     1. Automatic adaptor trimming
-    2. Low-qual base filtering (50% of bases w/ Phred >20) 
+    2. Low-qual base filtering (40% of bases w/ Phred >15) 
     3. Reporting by HTML and JSON.
     """
     input:  
@@ -53,7 +53,7 @@ rule trim_adapters:
 rule filter_reads:
     """ 
     Use BBduk to filter out reads using kmer filtering w/ Paried-End implementation.
-    I'm using a kmer size of 31 and a hamming distance of 4. 
+    I'm using a kmer size of 31 and a hamming distance of 2. 
 
     The genome is a composite of Measles virus genomes of the D subtype from 
     around the time of the patients infection.

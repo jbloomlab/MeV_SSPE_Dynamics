@@ -1,5 +1,5 @@
 """ 
-This pipline runs the Measle SSPE project analysis.
+This pipline runs the Measle SSPE variant analysis.
 
 Author: Will Hannon 
 Date: 2022
@@ -31,7 +31,7 @@ rule all:
         join(config['variant_dir'], "variants.csv"),
         join(config['coverage_dir'], "merged.depth"),
         join(config['ref_dir'], 'annotated_SSPE_consensus_snps.csv'),
-        join(config['notebook_dir'], "genotype-subclonal-snps.html"),
+        join(config['notebook_dir'], "establish-haplotype-relationship.html"),
         join(config['bridging_dir'], "bridging_reads.csv")
         # join(config['haplotype_dir'], "haplotypes.csv"),
         # join(config['spatial_dir'], "bottleneck.csv"), 

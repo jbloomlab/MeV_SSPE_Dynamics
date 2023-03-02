@@ -53,20 +53,3 @@ rule aggregate_bridging_reads:
     input: expand(join(config['bridging_dir'], "subclonal", "{accession}",  "{accession}.bridging_reads.csv"), accession = samples)
     output: join(config['bridging_dir'], "bridging_reads.csv")
     run: aggregate_csv(input, output) 
-
-
-rule determine_haplotype_backgrounds:
-    """
-    Alison Feder helped make a principled way to assign SNPs to Genome 1 or 2 backgrounds. 
-    """
-    input:
-        join(config['bridging_dir'], "genotyped.csv"),
-        join(config['notebook_dir'], "cluster-subclonal-haplotypes.html")
-    output:
-        join(config['notebook_dir'], "genotype-subclonal-snps.html")
-    params:
-        incsv=join(config['variant_dir'], "clustered_variants.csv"),
-        outcsv=join(config['variant_dir'], "assigned_variants.csv"),
-        annotations=config['MeVChiTok']['annotations']
-    conda: "../envs/r.yml"
-    script: "../notebooks/genotype-subclonal-snps.Rmd"
