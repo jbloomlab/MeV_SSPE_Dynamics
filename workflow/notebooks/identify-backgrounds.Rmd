@@ -1,5 +1,5 @@
 ---
-title: "2. Identify Backgrounds"
+title: "2. Cluster Major Genotypes"
 author:
     - "Will Hannon"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -15,9 +15,11 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to identify mutations that are found on the same background or haplotype. I'll do this by clustering mutations found *in every tissue* by their frequency and identifying groups of SNPs that move together across tissue samples (i.e. are likely on the same molecules) with kmedoids clustering. 
+As observed by the Cattaneo lab, there are clearly sets of mutations that move together in frequency across every spatial region of the brain. In particular, there are two sets of mutations who's average frequency appears to add up to 100% in every tissue. These two 'genotypes' appear to be the background upon which all other mutations arose. 
 
-In this notebook, I identify the mutations in `Genome-1` and `Genome-2`. These are two clusters of mutations that are ancestral to all viral sequences in the brain. The evidence for that claim is also provided in this notebook. 
+The goal of this notebook is to formalize an approach to phase these mutations by clustering variants that have strongly correlated frequencies across tissue specimens using  k-medoids clustering applied to a correlation matrix. 
+
+In this notebook, I identify the 'genotypes' `Genome 1` and `Genome 2`. In addition to these two 'genotypes', I identify a third set of mutations that appears to arise on `Genome 1`, but is at very low frequency in the Frontal Cortex 2 specimen.
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -29,49 +31,65 @@ knitr::opts_chunk$set(echo = FALSE)
 ## ==== Install Required Packages ==== ##
 
 ## List of all packages needed
-packages = c("tidyverse", "ComplexHeatmap", "cluster")
+packages = c("tidyverse", "ComplexHeatmap", "cluster", "knitr", "ggrepel")
 
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
 
-The inputs for this analysis are (1) the filtered and combined variants from `quality-control.Rmd` and (2) annotations of the positions of the main Measles open reading frames. 
+The inputs for this analysis are (1) the filtered and combined variants from `quality-control.Rmd` and (2) annotations of the positions of the main Measles open reading frames, and (3) the mutations added to the patient-specific reference sequencing. 
 
 ```{r Input, echo=T}
 
 ## ==== File paths input data ==== ##
 
-# Variants that were filtered and corrected in `quality-control.Rmd`
-# variant.data = "../../results/variants/filtered_variants.csv"
-variant.data = snakemake@params[['incsv']]
-# Annotations for the standard Measles ORFs ~ for making pretty figures.
-# annotations.filepath = "../../config/annotations.csv"
-annotations.filepath = snakemake@params[['annotations']]
+if (exists("snakemake")) {
+  # Variants that were filtered and corrected in `quality-control.Rmd`
+  variant.data = snakemake@params[['incsv']]
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = snakemake@params[['annotations']]
+  # Path to the ancestral mutations
+  ancestral.data = snakemake@params[['ancestral']]
+} else {
+  # Variants that were filtered and corrected in `quality-control.Rmd`
+  variant.data = "../../results/variants/filtered_variants.csv"
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = "../../config/annotations.csv"
+  # Path to the ancestral mutations
+  ancestral.data = "../../config/ref/annotated_SSPE_consensus_snps.csv"
+}
 
 ```
 
-The output of this analysis are the filtered variants annotated by whether they are `Genome-1`, `Genome-2`, `Genome-1-1`, or `subclonal` to these three haplotypes.
+The output of this analysis are the filtered variants annotated by whether they are `Genome-1`, `Genome-2`, `Genome-1-1`, or `subclonal` to these three 'genotypes'.
+
 ```{r Outputs, echo=T}
 
 ## ==== File paths output data ==== ##
 
 # Path to save output
-# output.path = "../../results/variants/genotyped_variants.csv"
-output.path = snakemake@params[['outcsv']]
+if (exists("snakemake")) {
+  output.path = snakemake@params[['outcsv']]
+} else {
+  output.path = "../../results/variants/genotyped_variants.csv"
+}
 
 ```
 
-## Distribution of Mutations
+## Clusters of Variants
 
-```{r Read in Data, echo=T, warning=F, message=F}
+This is what the data we have looks like. 
+
+```{r Read in Data, echo=F, warning=F, message=F}
 
 selected.variants.df = read_csv(variant.data, show_col_types = FALSE)
-head(selected.variants.df)
+
+head(selected.variants.df) %>% 
+  kable(., caption = "Filtered Variants")
 
 ```
-
-What are the distribution of SNPs in the Measles genome in each tissue? This will help to identify the regions of the genome in which we can most confidently assign mutations to specific genetic backgrounds with read support. This will be relevant after we cluster mutations by frequencies below. 
+It's clear that there groups of mutations that are found at the same frequency across tissues. This was originally observed in a pilot tissue specimen that was chipped from the frozen brain. This sample is called `SSPE 1`. 
 
 ```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
 
@@ -115,69 +133,169 @@ tissue_order = c(
 
 ```
 
-*Note, I'm excluding `SSPE 1` and `SSPE 2` in this figure since we don't know what part of the brain these two pilot samples come from*
+We can see these mutations clearly if we draw 'gates' of frequency around mutations on the plot. Below, I'm drawing 'gates' around 60-75% and 30-45% of the genome respectively.
 
-```{r Mutation Distribution, warning=F, message=F, fig.align='center', fig.width=18, fig.height=12}
+```{r Figure 2 Data, echo=T, warning=FALSE}
 
-selected.variants.df %>% 
-  filter(!Tissue %in% c("SSPE 1", "SSPE 2")) %>% 
-  ggplot(aes(x = POS, y = factor(Tissue, levels = rev(tissue_order)))) +
-    geom_point(shape = 108, size = 6, color = "black") +
-    xlab("Position") +
+# Read in the consensus SNPs
+ancestral.df = read_csv(ancestral.data, show_col_types = FALSE) %>% 
+  mutate(SNP = paste0(REF, POS, ALT)) %>% 
+  select(POS, REF, ALT, SNP) %>% 
+  mutate(AF = 1.0) 
+
+# Format the data for plotting
+sspe.1.df = selected.variants.df %>% 
+  # Select the pilot specimen
+  filter(Tissue == "SSPE 1") %>% 
+  # Select the important columns 
+  select(colnames(ancestral.df)) %>% 
+  # Add in the ancestral SNPs 
+  bind_rows(., ancestral.df) %>% 
+  # Bind variants by frequency
+  mutate(Genotype = case_when(
+    AF >= 0.9 ~ "CBA",
+    AF >= 0.6 & AF <= 0.75 ~ "CG1", 
+    AF >= 0.3 & AF <= 0.45 ~ "CG2",
+    TRUE ~ "subclonal"
+  )) %>% 
+  # Point size should be small for mutation we don't know about
+  mutate(Size = if_else(Genotype == "subclonal", "small", "normal")) %>% 
+  # Point shape depends on whether the mutation is a transition or transversion
+  mutate(Shape = case_when(
+    REF == "A" & ALT == "G" ~ "A to G / U to C",
+    REF == "T" & ALT == "C" ~ "A to G / U to C",
+    REF == "G" & ALT == "A" ~ "Other Transitions",
+    REF == "C" & ALT == "T" ~ "Other Transitions",
+    TRUE ~ "Transversions"
+  )) %>% 
+  # We want to highlight mutations that are candidate 'Drivers' of spread
+  mutate(Driver = case_when(
+    SNP == "G3812A" ~ "M-W125*",
+    SNP == "T6817A" ~ "F-L454M",
+    SNP == "T3586C" ~ "M-F50S",
+    SNP == "T7293C" ~ "H-I8T",
+    SNP == "C7036T" ~ "F-Q527*",
+    TRUE ~ ""
+  )) 
   
-    # == Annotations of genes == #
-  
-    # Nucleoprotein
-    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
-    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 10) +
-    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 14 ,
-                   alpha = .1, fill = "dodgerblue2", size = .1) +  
-    # P/V/C
-    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "yellow3", col = "black", size = .1) +
-    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 10) +
-    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "yellow3", size = .1) +
-    # Matrix protein
-    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
-    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 10)  +
-    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "#FF7F00", size = .1) +
-    # Fusion protein
-    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
-    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .25, label = "F", family = "helvetica", size = 10) +
-    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "#6A3D9A", size = .1) +
-    # Hemagluttinin
-    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "green4", col = "black", size = .1) +
-    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 10) +
-    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 14,
-               alpha = .1, fill = "green4", size = .1) +
-    # Large protein
-    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
-    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 10) +
-    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 14 ,
-               alpha = .1, fill = "#E31A1C", size = .1) +
-    theme_classic() +
-    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
-    theme(legend.position="bottom", legend.box = "horizontal") +
-    theme(legend.box.background = element_rect(colour = "black")) +
-    theme(text=element_text(size=24)) + 
-    theme(axis.text.x = element_text(size=28)) + 
-    theme(axis.title.x = element_text(size=30)) + 
-    theme(plot.title = element_text(hjust = 0.5))  +
-    theme(axis.title.y = element_blank()) +
-    scale_x_continuous(limits=c(0,16000)) +
-    theme(legend.position = "none") 
+# Binned SNPS (i.e. CBA, CG1, and CG2)
+binnned.snps = sspe.1.df %>% 
+  filter(Genotype %in% c("CBA", "CG1", "CG2") & Driver == "")
+# Un-binned SNPS (i.e. subclonal)
+subclonal.snps = sspe.1.df %>% 
+  filter(Genotype == 'subclonal' & Driver == "")
+# Putative driver SNPs
+driver.snps = sspe.1.df %>% 
+  filter(Driver != "")
+
+sspe.1.df %>% 
+  filter(Genotype == "CG2") %>% 
+  pull(SNP) %>% 
+  unique() %>% 
+  length()
 
 ```
 
-There are significant gaps in distribution of mutations between the M and F proteins in the Cerebellum samples. This is due to extremely low coverage in these samples over that region. 
+```{r Figure 2 plot, fig.align='center', fig.width=10, fig.height=5}
+
+# Make Figure 2 of the paper
+ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +
+  geom_point(size = 2) + 
+  geom_point(data = subclonal.snps, color = "#878484", size = 1) + 
+  geom_point(data = driver.snps, color = "black", size = 3) + 
+  geom_text_repel(data = driver.snps, aes(label = Driver), color = "black", point.padding = 1) + 
+  xlab("Position") + 
+  ylab("Allele Frequency") +
+  scale_color_manual(values = c("#d9cb34", "#307EC2", "#B63F3E")) +
+  scale_shape_discrete(name="Mutation") +
+  
+  # == Annotations of genes == #
+  
+  # 3' Start
+  annotate(geom = "text", x = (N$Start - 150), y =  -.05, label = "3'", size = 5) +
+   
+  # Nucleoprotein
+  annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#d97634", col = "black", size = .1) +
+  annotate(geom = "text", x = (N$Stop + N$Start)/2, y =  -.05, label = "N", size = 5) +
+  annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = 1.1,
+                 alpha = .05, fill = "#d97634", size = .1) +  
+ 
+  # P/V/C
+  annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#fcff3d", col = "black", size = .1) +
+  annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y =  -.05, label = "P/V/C", size = 5) +
+  annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#fcff3d", size = .1) +
+ 
+  # Matrix protein
+  annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#0db51b", col = "black", size = .1) +
+  annotate(geom = "text", x = (M$Stop + M$Start)/2, y =  -.05, label = "M", size = 5)  +
+  annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#0db51b", size = .1) +
+ 
+  # Fusion protein
+  annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#6A3D9A", col = "black", size = .1) +
+  annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y =  -.05, label = "F", size = 5) +
+  annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#6A3D9A", size = .1) +
+
+  # Hemagluttinin
+  annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#0251d9", col = "black", size = .1) +
+  annotate(geom = "text", x = (H$Stop + H$Start)/2, y =  -.05, label = "H", size = 5) +
+  annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#0251d9", size = .1) +
+
+  # Large protein
+  annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#bf1515", col = "black", size = .1) +
+  annotate(geom = "text", x = (L$Stop + L$Start)/2, y = -.05, label = "L", size = 5) +
+  annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#bf1515", size = .1) +
+  
+  # 5' Start
+  annotate(geom = "text", x = (L$Stop + 150), y =  -.05, label = "5'", size = 5) +
+ 
+  
+  # Themes
+  theme_classic() +
+  theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+  theme(legend.position="bottom", legend.box = "horizontal") +
+  theme(legend.box.background =element_blank()) +
+  theme(text=element_text(size=16)) + 
+  theme(legend.text = element_text(size=12)) +
+  theme(axis.text.x = element_text(size=16)) + 
+  theme(axis.title.x = element_text(size=16)) + 
+  scale_x_continuous(limits=c(-150, 16150), breaks=c(0, 5000, 10000, 15000)) +
+  scale_y_continuous(breaks=c(0, 0.25, 0.5, 0.75, 1.0)) +
+  theme(legend.position = "bottom") 
+
+ggsave("./figure-2.png", width = 11, height = 5, dpi = 300)
+
+```
+
+What are the counts of mutations in each of these three bins (`CBA`: "Candidate Brain Ancestor", `CG1`: "Candidate Genome 1", and `CG2`: "Candidate Genome 2")?
+
+```{r Mutations in Each Genotype}
+# What's the count of SNPs in each category?
+sspe.1.df %>% 
+  group_by(Genotype) %>% 
+  count() %>% 
+  kable(., caption = "Candidate Genotype Variant Counts")
+
+
+sspe.1.df %>% 
+  filter(Genotype == "CG2") %>% 
+  pull(SNP) %>% 
+  unique() %>% 
+  paste(., collapse = ", ")
+
+```
+
+These observations are what spurred the following approach to formalize a way to phase the mutations in these genotypes using all 15 tissues. 
 
 ## Assign Mutations to Major Backgrounds
 
@@ -279,7 +397,7 @@ filtered.SNP.correlation = cor(filtered.SNPs.df, use="pairwise.complete.obs")
 # Convert to distrance (postive corr is close to 0)
 filtered.SNP.dist = as.dist(1 - filtered.SNP.correlation)
 
-# Create k-medoids clustering with 8 clusters
+# Create k-medoids clustering with 3 clusters
 filtered.SNP.kmedoids = pam(filtered.SNP.dist, 3) 
 kclusters = filtered.SNP.kmedoids$cluster
 
@@ -407,22 +525,22 @@ labeled.df %>%
     # Annotations of genes #
     # Nucleoprotein
     annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
+               alpha = .2, fill = "#d97634", col = "black", size = .1) +
     annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 10) +
     annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 16 ,
-                   alpha = .1, fill = "dodgerblue2", size = .1) +  
+                   alpha = .1, fill = "#d97634", size = .1) +  
     # P/V/C
     annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "yellow3", col = "black", size = .1) +
+               alpha = .2, fill = "#fcff3d", col = "black", size = .1) +
     annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 10) +
     annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 16 ,
-               alpha = .1, fill = "yellow3", size = .1) +
+               alpha = .1, fill = "#fcff3d", size = .1) +
     # Matrix protein
     annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
+               alpha = .2, fill = "#0db51b", col = "black", size = .1) +
     annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 10)  +
     annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 16 ,
-               alpha = .1, fill = "#FF7F00", size = .1) +
+               alpha = .1, fill = "#0db51b", size = .1) +
     # Fusion protein
     annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
                alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
@@ -431,16 +549,16 @@ labeled.df %>%
                alpha = .1, fill = "#6A3D9A", size = .1) +
     # Hemagluttinin
     annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "green4", col = "black", size = .1) +
+               alpha = .2, fill = "#0251d9", col = "black", size = .1) +
     annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 10) +
     annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 16,
-               alpha = .1, fill = "green4", size = .1) +
+               alpha = .1, fill = "#0251d9", size = .1) +
     # Large protein
     annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
-               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
+               alpha = .2, fill = "#bf1515", col = "black", size = .1) +
     annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 10) +
     annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 16 ,
-               alpha = .1, fill = "#E31A1C", size = .1) +
+               alpha = .1, fill = "#bf1515", size = .1) +
     scale_color_manual(values = c("#307EC2", "#B63F3E", "grey")) +
     theme_classic() +
     theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +

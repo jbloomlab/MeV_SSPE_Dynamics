@@ -1,6 +1,6 @@
 # Analysis Notebooks
 
-This subdirectory contains the python and R notebooks that analyze the sequencing data and variant calls from the pipeline. Below is a description of the analysis performed in each notebook.
+This subdirectory contains the `python` and `R` notebooks that analyze the sequencing data and variant calls from the pipeline. Below is a description of the analysis performed in each notebook.
 
 The notebooks are numbered based on their order in the analysis. While the order is important for some notebooks (e.g. an output is used in a downstream notebook), in others it is arbitrary.
 
@@ -8,27 +8,29 @@ The notebooks are numbered based on their order in the analysis. While the order
 
 1. `quality-control.Rmd`
 
-> In this notebook, I assess the quailty of variant calls by comparing and combining the variants called by different tools (`lofreq` and `varscan`).
+> In this notebook, I assess the quailty of variant calls by comparing and combining the variants called by different tools (`lofreq` and `varscan`). I also make **extended data figure 3** of the paper where I plot the location of mutations in each genome highlighting regions with low coverage.
 
 2. `identify-backgrounds.Rmd`
 
-> In this notebook, I make a first pass at identifying variants that are on the same viral haplotype by clustering mutations by their correlation in frequency. Here, I identify `Genome 1` and `Genome 2`. I also identify the `Genome 1` subhaplotype `Genome 1-1`.
+> In this notebook, I make a first pass at identifying variants that are on the same viral haplotype by clustering mutations by their correlation in frequency across _every tissue sample_. Here, I identify `Genome 1` and `Genome 2`. I also identify the `Genome 1` sub-haplotype that's present in every sample but the Frontal Cortex 2 specimen.
 
 3. `cluster-subclonal-mutations.Rmd`
 
-> In this notebook, I take the analysis in the previous notebook farther to see if we can cluster mutations by frequency even if they aren't found in every tissue sample. I use this analysis to identify subclonal haplotypes.
+> In this notebook, I take the analysis in the previous notebook farther to see if we can cluster mutations by frequency even if they aren't found in every tissue sample. I use this analysis to identify subclonal haplotypes that are on the background of either `Genome-1` or `Genome-2`. I also assign mutations that are missing from the original `Genome-1` or `Genome-2` assignment due to low depth in one or more tissue. Finally, I made `figure 2`, `figure 4a`, and `figure 4b`.
 
 4. `genotype-subclonal-snps.Rmd`
 
-> In this notebook, I use bridging reads and a probabalistic approach written by Alison Feder to assign SNPs to either `Genome 1` or `Genome 2`. This also assigns haplotypes to their most like genotype.
+> In this notebook, I use bridging reads and a probabalistic approach written by Alison Feder to assign SNPs to either `Genome 1` or `Genome 2`. This can be used to determine the most likely background for the sub-haplotypes identified in the previous notebook.
 
 5. `establish-haplotype-relationship.Rmd`
 
-> In this notebook, use a combination of the 'pigeon-hole principle' and bridging reads to determine how the clusters of mutations (putitive haplotypes) are likely related to one another.
+> In this notebook, use a combination of the 'pigeon-hole principle' and bridging reads to determine how the clusters of mutations (sub-haplotypes) are likely related to one another.
+
+---
 
 6. `spatial-tissue-clustering.Rmd`
 
-> In this notebook, examine how variant populations in different tissues relate to one another in the context of space. For example, are nearby tissues more similar than far away tissues?
+> In this notebook, I examined how variant populations in different tissues relate to one another in the context of space. For example, are nearby tissues more similar than far away tissues?
 
 7. `mutation-effect-distribution.Rmd`
 

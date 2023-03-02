@@ -1,5 +1,5 @@
 ---
-title: "3. Haplotype Subclonal Mutations"
+title: "3. Phase Subclonal Mutations"
 author:
     - "Will Hannon"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to identify other clusters of mutations with same approach used to define the mutations in `Genome-1` and `Genome-2`. Hopefully, these can be used to establish subclonal haplotypes on the background of `Genome-1` and `Genome-2`. 
+The goal of this notebook is to phase other clusters of variants using the same approach we used to define the 'genotypes' `Genome-1` and `Genome-2` in the previous notebook.
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -34,19 +34,30 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
 
-The inputs for this analysis are (1) the filtered and combined variants annotated by major genotypes from `identify-backgrounds.Rmd` and (2) annotations of the positions of the main Measles open reading frames. 
+The inputs for this analysis are (1) the filtered and combined variants annotated by major genotypes from `identify-backgrounds.Rmd` and (2) annotations of the positions of the main MeV open reading frames. 
 
 ```{r Inputs, echo=T}
 
 ## ==== File paths input data ==== ##
 
-# Data from lofreq and varscan labeled with G1 and G2 mutations
-# labeled.data = "../../results/variants/genotyped_variants.csv"
-labeled.data = snakemake@params[['incsv']]
+if (exists("snakemake")) {
+  # Data from lofreq and varscan labeled with G1 and G2 mutations
+  labeled.data = snakemake@params[['incsv']]
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = snakemake@params[['annotations']]
+  # Path to the ancestral mutations
+  ancestral.data = snakemake@params[['ancestral']]
 
-# Annotations 
-# annotations.filepath = "../../config/annotations.csv"
-annotations.filepath = snakemake@params[['annotations']]
+} else {
+  # Data from lofreq and varscan labeled with G1 and G2 mutations
+  labeled.data = "../../results/variants/genotyped_variants.csv"
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = "../../config/annotations.csv"
+  # Path to the ancestral mutations
+  ancestral.data = "../../config/ref/annotated_SSPE_consensus_snps.csv"
+
+}
+
 
 ```
 
@@ -57,8 +68,11 @@ The output of this notebook are the filtered variants further annotated with clu
 ## ==== File paths output data ==== ##
 
 # Path to save the results
-output.path = "../../results/variants/clustered_variants.csv"
-output.path = snakemake@params[['outcsv']]
+if (exists("snakemake")) {
+  output.path = snakemake@params[['outcsv']]
+} else {
+  output.path = "../../results/variants/clustered_variants.csv"
+}
 
 ```
 
@@ -238,13 +252,13 @@ I'll annotate these variants in the main data frame.
 
 # Clusters that are clearly genome-1 
 genome.1.missing.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(9)) %>% 
+  filter(cluster %in% c(8)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Clusters that are clearly genome-1-1
 genome.1.1.missing.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(18)) %>% 
+  filter(cluster %in% c(14)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -256,7 +270,7 @@ genome.2.missing.snps = twentyfive.percent.or.more.clusters.df %>%
 
 # Clusters that break the rules 
 maybe.in.both.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(8, 13, 2, 15)) %>% 
+  filter(cluster %in% c(12, 11, 2, 7)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -310,25 +324,25 @@ cluster.1.snps = twentyfive.percent.or.more.clusters.df %>%
 
 # Genome-1 
 cluster.2.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(11)) %>% 
+  filter(cluster %in% c(19)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Genome-1 
 cluster.3.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(12)) %>% 
+  filter(cluster %in% c(16)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Genome-2
 cluster.4.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(14)) %>% 
+  filter(cluster %in% c(10)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Genome-2
 cluster.5.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(16)) %>% 
+  filter(cluster %in% c(20)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -340,19 +354,19 @@ cluster.6.snps = twentyfive.percent.or.more.clusters.df %>%
 
 # Genome-2
 cluster.7.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(19)) %>% 
+  filter(cluster %in% c(3)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # ? 
 cluster.8.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(20)) %>% 
+  filter(cluster %in% c(13)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # ? 
 cluster.9.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(3)) %>% 
+  filter(cluster %in% c(4)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -364,7 +378,7 @@ cluster.10.snps = twentyfive.percent.or.more.clusters.df %>%
 
 # ? 
 cluster.11.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(7)) %>% 
+  filter(cluster %in% c(18)) %>% 
   pull(SNP) %>% 
   unique(.)
   
@@ -443,7 +457,7 @@ Most of these aren't very clear cut clusters. I took the 8 that looked the most 
 
 ```{r Promising low-frequency clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
 
-promising.subclonal.clusters = c(1, 13, 2, 23, 25, 5, 6, 8)
+promising.subclonal.clusters = c(20, 11, 21, 7, 27, 4, 5, 25)
 
 twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% promising.subclonal.clusters) %>% 
@@ -466,42 +480,42 @@ twentyfive.percent.or.fewer.clusters.df %>%
 ```{r Annotate Remaining Clusters}
 
 cluster.12.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(1)) %>% 
+  filter(cluster %in% c(20)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.13.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(13)) %>% 
+  filter(cluster %in% c(11)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.14.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(2)) %>% 
+  filter(cluster %in% c(21)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.15.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(23)) %>% 
+  filter(cluster %in% c(7)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.16.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(25)) %>% 
+  filter(cluster %in% c(27)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.17.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(5)) %>% 
+  filter(cluster %in% c(4)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.18.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(6)) %>% 
+  filter(cluster %in% c(5)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.19.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(8)) %>% 
+  filter(cluster %in% c(25)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -650,20 +664,54 @@ expanded.df %>%
 
 ```
 
+Looking closely at the haplotypes, I think there are two amendments: 
+
+1. It looks like cluster 17 and 18 aren't clear haplotypes, so for now, I'll remove these. 
+2. Cluster 11 and 19 are probably the same cluster, certainly 19 is on the background of cluster 11.
+
+```{r, Amend the Clusters, echo=T}
+
+updated.haplotype.df = updated.haplotype.df %>%
+  mutate(Haplotype = case_when(Haplotype %in% c("cluster 17", "cluster 18") ~ "subclonal",
+                               Haplotype %in% c("cluster 19") ~ "cluster 11",
+                               TRUE ~ Haplotype)) 
+
+```
+
+Finally, it's difficult to haplotypes these particular groups because there aren't a lot of tissues where we can establish a frequency correlation. 
+```{r fig.align='center', fig.width=19, fig.height=10}
+
+expanded.df %>% 
+    filter(Haplotype %in% c("cluster 10", "cluster 13")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
+      geom_line(aes(group = SNP)) +
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Genotype, fill = Genotype), alpha=0.2, colour = NA) +
+      facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
+      scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      theme_bw(20) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+
+```
+
+
 ```{r, Write out, echo=T}
 
 write_csv(updated.haplotype.df, output.path)
 
 ```
 
-## Figure 2 of the Paper
+## Figure 4a
 
-For the second figure of the paper, we want to illustrate the two major genotypes and the ancestral mutations in one of the two primary samples (SSPE 1 and SSPE 2). In addition, we want to illustrate some of the major driver mutations that we find on the background of these haplotypes. 
+In this notebook we clustered mutations into haplotypes even if they weren't identified in every tissue. We also assigned some mutations to the G1 or G2 backgrounds that were missing from a tissue due to coverage. 
 
-```{r Make Figure 2, fig.align='center', fig.width=10, fig.height=5, echo=FALSE}
+Now, the goal of this figure is to visualize these mutations, along with all other mutations, in each tissue specimen. Mutations are annotated by whether they're G1, G2, or a driver. 
 
-# Path to the ancestral mutations
-ancestral.data = snakemake@params[['ancestral']]
+```{r Figure 4a, fig.align='center', fig.width=14, fig.height=7, echo=FALSE}
 
 # For simplicity, rename the data frame
 labeled.df = updated.haplotype.df
@@ -686,10 +734,8 @@ labeled.df = labeled.df %>%
                           POS > L$Stop ~ "5'UTR", 
                           TRUE ~ Gene_Name)) 
 
-tissue_colors = c("#ef476f","#ffd166","#06d6a0","#118ab2","#073b4c","#DDA0DD")
-
-# Tissue order - roughly by the location in the brain 
-tissue_order = c(
+# Order of the tissues for the x-axis
+expanded_tissue_order = c(
   "SSPE 1", 
   "SSPE 2",
   "Frontal Cortex 2", 
@@ -701,38 +747,22 @@ tissue_order = c(
   "Hippocampus",
   "Internal Capsule", 
   "Midbrain", 
-  "UBS",
+  "Upper Brain Stem",
   "Brain Stem",
   "Cerebellum",
   "Cerebellum Nucleus"
 )
 
-# Read in the consensus SNPs
-ancestral.df = read_csv(ancestral.data, show_col_types = FALSE) %>% 
-  mutate(SNP = paste0(REF, POS, ALT)) %>% 
-  select(POS, REF, ALT, SNP) %>% 
-  mutate(Genotype = "Ancestral", 
-         AF = 1.0) 
-  
 # Format the data for plotting
-plotting.df = labeled.df %>% 
-  filter(Tissue == "SSPE 1") %>% 
+figure_4b.df = labeled.df %>% 
   mutate(Genotype = case_when(
-    Haplotype == "genome-1" ~ "CG 1", 
-    Haplotype == "genome-1-1" ~ "CG 1",
-    Haplotype == "genome-2" ~ "CG 2",
+    Haplotype == "genome-1" ~ "G1", 
+    Haplotype == "genome-1-1" ~ "G1",
+    Haplotype == "genome-2" ~ "G2",
     TRUE ~ "subclonal"
   )) %>% 
-  select(POS, REF, ALT, SNP, AF, Genotype) %>% 
-  bind_rows(ancestral.df) %>% 
+  select(POS, REF, ALT, SNP, AF, Genotype, Tissue) %>% 
   mutate(Size = if_else(Genotype == "subclonal", "small", "normal")) %>% 
-  mutate(Shape = case_when(
-    REF == "A" & ALT == "G" ~ "A to G / U to C",
-    REF == "T" & ALT == "C" ~ "A to G / U to C",
-    REF == "G" & ALT == "A" ~ "Other Transitions",
-    REF == "C" & ALT == "T" ~ "Other Transitions",
-    TRUE ~ "Transversions"
-  )) %>% 
   mutate(Driver = case_when(
     SNP == "G3812A" ~ "M-W125*",
     SNP == "T6817A" ~ "F-L454M",
@@ -740,92 +770,118 @@ plotting.df = labeled.df %>%
     SNP == "T7293C" ~ "H-I8T",
     SNP == "C7036T" ~ "F-Q527*",
     TRUE ~ ""
-  )) 
+  )) %>% 
+  mutate(Tissue = case_when(
+    Tissue == "UBS" ~ "Upper Brain Stem",
+    TRUE ~ Tissue
+  ))
 
-core.snps = plotting.df %>% 
+core.snps = figure_4b.df %>% 
   filter(Genotype != 'subclonal' & Driver == "")
 
-subclonal.snps = plotting.df %>% 
+subclonal.snps = figure_4b.df %>% 
   filter(Genotype == 'subclonal' & Driver == "")
 
-driver.snps = plotting.df %>% 
+driver.snps = figure_4b.df %>% 
   filter(Driver != "")
 
-# Make figure 2 of the paper
-ggplot(data = core.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +
-  geom_point(size = 2) + 
-  geom_point(data = subclonal.snps, color = "#878484", size = 1) + 
-  geom_point(data = driver.snps, color = "black", size = 3) + 
-  geom_text_repel(data = driver.snps, aes(label = Driver), color = "black", point.padding = 1) + 
-  xlab("Position") + 
+# Make figure 4b of the paper
+ggplot(data = core.snps, aes(x = factor(Tissue, levels = (expanded_tissue_order)), y = AF, color = Genotype)) +
+  geom_jitter(data = subclonal.snps, color = "#878484", size = 1.5, width = 0.25, alpha = 0.75) + 
+  geom_jitter(size = 2, width = 0.2, alpha = 1) + 
+  geom_jitter(data = driver.snps, aes(shape = Driver, fill=Genotype), color = "black", size = 3, alpha=1, width = 0, stroke = 2) + 
+  xlab("Specimen") + 
   ylab("Allele Frequency") +
-  scale_color_manual(values = c("#d9cb34", "#307EC2", "#B63F3E")) + 
+  scale_color_manual(values = c("#307EC2", "#B63F3E")) +
+  scale_fill_manual(values = c("#307EC2", "#878484"), guide = "none") +
+  scale_shape_manual(values=c(21,22,24))+
+  theme_bw(20) +
+  theme(axis.text.x = element_text(angle = 35, hjust=1)) 
   
-  # == Annotations of genes == #
+ggsave("./figure-4b.png", width = 14, height = 7, dpi = 300)
+
+```
+
+What are the SNPs we're calling 'Genome 1 (G1)'. These will be different than the 'Candidate Genome 1' SNPs in Figure 2, because these were identified by their correlation in frequency between all tissue specimens. 
+
+```{r SNPs in G1}
+
+g1.snps = core.snps %>% 
+  filter(Genotype == "G1") %>% 
+  pull(SNP) %>% 
+  unique() 
+
+driver.g1.snps = driver.snps %>% 
+  filter(Genotype == "G1") %>% 
+  pull(SNP) %>% 
+  unique() 
+
+print(paste("There are", length(g1.snps), "SNPs in G1 plus",length(driver.g1.snps) , "driver that is G1:"))
+g1.snps
+driver.g1.snps
+
+```
+
+## Figure 4b
+
+The goal here is to make figure 4b of the paper. Here, we explore the low frequency mutations in the Frontal Cortex 2 sample that appear to be part of Genome 1, but not in the FC2 specimen.
+
+```{r Figure 4b, fig.align='center', fig.width=15, fig.height=7, echo=FALSE}
+
+figure.4b.df = labeled.df %>% 
+  mutate(Genotype = case_when(
+    Haplotype == "genome-1" ~ "G01a", 
+    Haplotype == "genome-1-1" ~ "G01b",
+    Haplotype == "genome-2" ~ "G2",
+    TRUE ~ "subclonal"
+  )) %>% 
+  mutate(Tissue = case_when(
+    Tissue == "UBS" ~ "Upper Brain Stem",
+    TRUE ~ Tissue
+  )) %>% 
+  select(Tissue, AF, Genotype, POS) %>% 
+  # There is one SNP missing only from the FC2 due to coverage, add this back in with AF as 0
+  add_row(Tissue = "Frontal Cortex 2", AF=0, Genotype = "G01b", POS = 15084)
+
+subclonal.background = figure.4b.df %>% 
+  filter(Genotype == "subclonal")
+
+main.genotypes = figure.4b.df %>% 
+  filter(Genotype != "subclonal")
+
+main.genotypes %>% 
+  ggplot(aes(x = POS, y = AF, col = Genotype)) +
+    geom_point(data = subclonal.background, aes(x = POS, y = AF), col = "grey",  size = 1) + 
+    geom_line() +
+    geom_point(size = 2) + 
+    xlab("Position") + 
+    ylab("Allele Frequency") +
+    facet_wrap(~factor(Tissue, levels = (expanded_tissue_order)), ncol=5)+ 
+    scale_color_manual(values = c("#87CEEB", "#00008B", "#B63F3E")) +
+    theme_bw(18) +
+    theme(legend.position="bottom")
   
-  # Nucleoprotein
-  annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.1, ymax = 0 ,
-             alpha = .5, fill = "#d97634", col = "black", size = .1) +
-  annotate(geom = "text", x = (N$Stop + N$Start)/2, y =  -.05, label = "N", size = 5) +
-  annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = 1.1,
-                 alpha = .05, fill = "#d97634", size = .1) +  
- 
-  # P/V/C
-  annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = -.1, ymax = 0 ,
-             alpha = .5, fill = "#fcff3d", col = "black", size = .1) +
-  annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y =  -.05, label = "P/V/C", size = 5) +
-  annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 1.1,
-             alpha = .05, fill = "#fcff3d", size = .1) +
- 
-  # Matrix protein
-  annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = -.1, ymax = 0 ,
-             alpha = .5, fill = "#0db51b", col = "black", size = .1) +
-  annotate(geom = "text", x = (M$Stop + M$Start)/2, y =  -.05, label = "M", size = 5)  +
-  annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 1.1,
-             alpha = .05, fill = "#0db51b", size = .1) +
- 
-  # Fusion protein
-  annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = -.1, ymax = 0 ,
-             alpha = .5, fill = "#6A3D9A", col = "black", size = .1) +
-  annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y =  -.05, label = "F", size = 5) +
-  annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 1.1,
-             alpha = .05, fill = "#6A3D9A", size = .1) +
+ggsave("./figure-6.png", width = 15, height = 8, dpi = 300)
 
-  # Hemagluttinin
-  annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = -.1, ymax = 0 ,
-             alpha = .5, fill = "#0251d9", col = "black", size = .1) +
-  annotate(geom = "text", x = (H$Stop + H$Start)/2, y =  -.05, label = "H", size = 5) +
-  annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 1.1,
-             alpha = .05, fill = "#0251d9", size = .1) +
+```
 
-  # Large protein
-  annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = -.1, ymax = 0 ,
-             alpha = .5, fill = "#bf1515", col = "black", size = .1) +
-  annotate(geom = "text", x = (L$Stop + L$Start)/2, y = -.05, label = "L", size = 5) +
-  annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 1.1,
-             alpha = .05, fill = "#bf1515", size = .1) +
-  
-  # Themes
-  theme_classic() +
-  theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
-  theme(legend.position="bottom", legend.box = "horizontal") +
-  theme(legend.box.background =element_blank()) +
-  theme(text=element_text(size=16)) + 
-  theme(legend.text = element_text(size=12)) +
-  theme(axis.text.x = element_text(size=16)) + 
-  theme(axis.title.x = element_text(size=16)) + 
-  scale_x_continuous(limits=c(0, 16000)) +
-  scale_y_continuous(breaks=c(0, 0.25, 0.5, 0.75, 1.0)) +
-  theme(legend.position = "bottom") 
+What are the mutations in genomes 01a and 01b? These should add up to G1?
 
-# ggsave("../../figure-2.png", width = 11, height = 5, dpi = 300)
+```{r Mutations G01a and G01b}
 
-``` 
+g1a.snps = figure.4b.df %>% 
+  filter(Genotype == "G01a") %>% 
+  pull(POS) %>% 
+  unique()
 
+g1b.snps = figure.4b.df %>% 
+  filter(Genotype == "G01b") %>% 
+  pull(POS) %>% 
+  unique()
 
+print(paste("There are", length(g1a.snps), "SNPS in G01a and", length(g1b.snps), "SNPs in G01b"))
 
-
-
+```
 
 
 

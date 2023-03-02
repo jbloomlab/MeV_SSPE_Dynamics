@@ -38,21 +38,40 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 ## ==== File paths input data ==== ##
 
-# Data from lofreq and varscan labeled with subclonal haplotypes
-updated.data = "../../results/variants/polished_variants.csv"
+if (exists("snakemake")) {
 
-# Data from the count of bridging reads
-bridging.data = "../../results/bridging/bridging_reads.csv"
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = "../../results/variants/polished_variants.csv"
+  
+  # Data from the count of bridging reads
+  bridging.data = "../../results/bridging/bridging_reads.csv"
+  
+  # Data from Iris' driver mutations
+  driver.mutations = "../../config/driver_mutations.csv"
+  
+  # Annotations for MeV genes
+  annotations.filepath = "../../config/annotations.csv"
 
-# Data from Iris' driver mutations
-driver.mutations = "../../config/driver_mutations.csv"
+} else {
 
-# Annotations for MeV genes
-annotations.filepath = "../../config/annotations.csv"
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = "../../results/variants/polished_variants.csv"
+  
+  # Data from the count of bridging reads
+  bridging.data = "../../results/bridging/bridging_reads.csv"
+  
+  # Data from Iris' driver mutations
+  driver.mutations = "../../config/driver_mutations.csv"
+  
+  # Annotations for MeV genes
+  annotations.filepath = "../../config/annotations.csv"
+
+}
+
 
 ```
 
-Lets load in the data from Iris. In total there are 13 possible driver mutations. However, some of these are fixed on the 'ancestor' or reference. If we exclude these, there are only 9 drivers that aren't fixed. 
+Lets load in the data from Iris. In total, there are 13 possible driver mutations. However, some of these are fixed on the 'ancestor' or reference. If we exclude these, there are only 9 drivers that aren't fixed. 
 
 ```{r What the Drivers}
 
@@ -146,11 +165,11 @@ expanded.df %>%
 
 ```
 
-We've already know about two of these SNPs - `C7036T` and `T7293C` - that we believe are on both genome-1 and genome-2. Of the remaining four *new* SNPs without phylogenetic context, only `G6775A` and `G7033T` are high-enough frequency to reasonable assign to a background. 
+We've already know about two of these SNPs - `C7036T` and `T7293C` - that we believe are on both genome-1 and genome-2. Of the remaining four *new* driver SNPs without phylogenetic context, only `G6775A` and `G7033T` are high-enough frequency to reasonable assign to on of the clusters we've already determined. 
 
-## G7033T
+## SNP: G7033T
 
-This is an interesting SNP because, like `C7036T`, it's a stop codon in the C-terminal domain of the Fusion protein. 
+This is an interesting SNP because, like `C7036T` (shown above), it's a stop codon in the C-terminal domain of the Fusion protein. 
 
 ```{r Coding Effect of G7033T}
 
@@ -162,7 +181,7 @@ labeled.df %>%
 
 ```
 
-There are three tissues that have this mutation at an appreciable frequency. 
+There are three tissues that have this mutation at an appreciable frequency (> 5% Allele Frequency). 
 
 ```{r Tissues with G7033T}
 
@@ -180,11 +199,13 @@ tissues.to.filter = labeled.df %>%
   pull(Tissue)
 
 ```
+Overall, this SNP is at higher frequency in the lower regions of the brain. 
 
-Are there any bridging reads in these tissues? Below, I filtered the bridging read counts for only reads that: 
-1. Overlap position 7033 
-2. Both snps are represented in more than 5% of bridging reads
+Now, let's see if there any bridging reads in these tissues that allow us to assign this SNP to an existing cluster. Below, I filtered the bridging read counts for only reads that: 
+1. Overlap position 7033 (where the driver is)
+2. Both SNPs are represented in more than 5% of bridging reads
 3. Are only from the three tissues above
+
 Then, I arranged them by the count of reads that contain both SNPs (`11`). 
 ```{r Bridging reads for G7033T}
 
@@ -199,7 +220,7 @@ bridging.df %>%
 
 ```
 
-What's really interesting here is that there does appear to be strong evidence that this stop codon mutation (`F-526*`) is **not** linked to reads with the other possible stop codon driver at position `7036` (`F-527*`). This makes sense biologically if this mutation is selected for adaptive reasons. 
+What's really interesting here is that there is strong evidence that this stop codon mutation (`F-526*`) is **not** linked to reads with the other stop codon driver at position `7036` (`F-527*`). This makes sense biologically if these Fusion C-terminal mutants are positively selected. 
 
 ```{r Exclusion from 7036}
 
@@ -215,7 +236,7 @@ bridging.df %>%
 
 ```
 
-## G6775A
+## SNP: G6775A
 
 `G6775A` is another mutation in Fusion.
 
@@ -229,7 +250,7 @@ labeled.df %>%
 
 ```
 
-Can we say anything about this SNP based on driving reads? 
+Can we say anything about this SNP based on bridging reads? 
 
 ```{r G6775A Bridging Reads}
 
@@ -275,4 +296,6 @@ labeled.df %>%
 
 
 ```
-Other than being excluded from cluster 13, it's not super clear how to fit this mutation onto the phylogeny. 
+Other than being excluded from cluster 13, it's not super clear how to fit this mutation onto the phylogeny yet. 
+
+

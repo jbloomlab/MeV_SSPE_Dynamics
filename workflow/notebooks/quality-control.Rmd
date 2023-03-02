@@ -1,5 +1,5 @@
 ---
-title: "1. Quality Control"
+title: "1. Process Variant Calls"
 author:
     - "Will Hannon"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to determine the quality of the variant calling data. What is the overlap between the different variant callers? How much coverage do we have in each sample? Are there samples that are problematic in some way?
+The goal of this notebook is to determine the quality of the variant calling data. What is the overlap between the different variant callers? How much coverage do we have in each sample? Are there samples that are problematic in some way? Finally, how do we combine variants from `lofreq` and `varscan` into a unified set to go forward with?
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -27,21 +27,33 @@ knitr::opts_chunk$set(echo = FALSE)
 ## ==== Install Required Packages ==== ##
 
 ## List of all packages needed
-
-packages = c("tidyverse", "UpSetR")
+packages = c("tidyverse", "UpSetR", "data.table")
 invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
 
-The data used in this notebook are the variant calls collated from `varscan` and `lofreq`. Variant were called relative the `SSPE` consensus genome that incorporates SNPs present at >90% frequency in more than 12/15 total brain samples. We consider these SNPs to be 'fixed' and 'ancestral' to all viral sequences isolated from the brain.
+The data used in this notebook are the variant calls from the programs `varscan` and `lofreq`. Variants were identified relative an `SSPE` patient-specific consensus genome that incorporates SNPs present at >=90% frequency in more than 12/15 total brain samples. We consider these SNPs to be 'fixed' and 'ancestral' to all viral sequences isolated from the brain.
 
 ```{r Inputs, echo=T}
 
 ## ==== File paths input data ==== ##
 
-# Variant data parsed from from lofreq and varscan VCF files
-# variant.data = "../../results/variants/variants.csv"
-variant.data = snakemake@input[[1]]
+if (exists("snakemake")) {
+  # Variant data parsed from from lofreq and varscan VCF files
+  variant.data = snakemake@input[[1]]
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = snakemake@params[['annotations']]
+  # Depth information for each tissue 
+  merged.depth = snakemake@input[[2]]
+
+} else {
+  # Variant data parsed from from lofreq and varscan VCF files
+  variant.data = "../../results/variants/variants.csv"
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = "../../config/annotations.csv"
+  # Depth information for each tissue 
+  merged.depth = "../../results/coverage/merged.depth"
+}
 
 ```
 
@@ -52,9 +64,11 @@ This notebook produces a filtered list of variants. These are variants that are 
 ## ==== File paths output data ==== ##
 
 # Variant calls present in both lofreq and varscan
-# output.path = "../../results/variants/filtered_variants.csv"
-output.path = snakemake@params[['outcsv']]
-  
+if (exists("snakemake")) {
+  output.path = snakemake@params[['outcsv']]
+} else {
+  output.path = "../../results/variants/filtered_variants.csv"
+}
 ```
 
 ## Processing Variant Calls
@@ -178,4 +192,163 @@ print(paste("Writing out the results to", output.path))
 write_csv(selected.variants.df, output.path)
 
 ```
+
+## Visualize Subclonal Variants
+
+What are the distribution of SNPs in the Measles genome in each tissue? This will help to identify the regions of the genome in which we can most confidently assign mutations to specific genetic backgrounds with read support. This will be relevant after we cluster mutations by frequencies below. 
+
+```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
+
+# Import genome annotations
+annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
+
+# Get the interval positions for these genes 
+N = annotations.df %>% dplyr::filter(Locus == "N")
+P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
+M = annotations.df %>% dplyr::filter(Locus == "M")
+F. = annotations.df %>% dplyr::filter(Locus == "F")
+H = annotations.df %>% dplyr::filter(Locus == "H")
+L = annotations.df %>% dplyr::filter(Locus == "L")
+
+# Add gene names to the variants
+selected.variants.df = selected.variants.df %>% 
+  mutate(Gene = case_when(POS < N$Start ~ "3'UTR",
+                          POS > L$Stop ~ "5'UTR", 
+                          TRUE ~ Gene_Name)) %>% 
+  mutate(Tissue = case_when(
+    Tissue == "UBS" ~ "Upper Brain Stem",
+    TRUE ~ Tissue
+  )) 
+
+tissue_colors = c("#ef476f","#ffd166","#06d6a0","#118ab2","#073b4c","#DDA0DD")
+
+# Tissue order - roughly by the location in the brain 
+tissue_order = c(
+  "SSPE 1", 
+  "SSPE 2",
+  "Frontal Cortex 2", 
+  "Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Parietal Lobe",
+  "Temporal Lobe", 
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Midbrain", 
+  "Upper Brain Stem",
+  "Brain Stem",
+  "Cerebellum",
+  "Cerebellum Nucleus"
+)
+
+```
+
+Note that some regions appear to have gaps in the appearance of SNPs. These are due to regions of low coverage. I'll highlight this by identifying regions where depth is less than 200 reads - the minimum required for calling a variant. 
+
+```{r Proccess Coverage Data, warning=FALSE, echo = T}
+
+# Import and process information about coverage/read depth
+tissue.df = selected.variants.df %>% select(Accession, Tissue) %>% unique()
+merged.depth.df = fread(merged.depth) %>% 
+  select(!V1) %>% 
+  left_join(., tissue.df, by = "Accession") %>% 
+  select(-Accession)
+
+# Get only the contiguous regions of low depth per Accession
+low.coverage.regions = merged.depth.df %>% 
+  filter(DP < 200) %>% 
+  select(-DP) %>% 
+  group_by(Tissue) %>% 
+  mutate(Block = cumsum(c(1, diff(POS) > 1))) %>% 
+  group_by(Tissue, Block) %>% 
+  mutate(x1 = min(POS), x2 = max(POS)) %>% 
+  ungroup() %>% 
+  select(-Block, -POS) %>% 
+  distinct() %>% 
+  arrange(x1, Tissue) %>% 
+  filter((x2 - x1) > 0) %>% 
+  mutate(POS = x1) 
+
+# Convert tissue into a factor
+low.coverage.regions$Tissue = factor(low.coverage.regions$Tissue, levels=rev(tissue_order), ordered=TRUE)
+low.coverage.regions = low.coverage.regions %>% 
+  mutate(y = as.integer(Tissue),
+         y1 = y - 0.2,
+         y2 = y + 0.2) 
+  
+```
+Any block colored in red indicates a region of low coverage where read depth is below 200 reads. 
+
+```{r Mutation Distribution, warning=F, message=F, fig.align='center', fig.width=18, fig.height=12}
+
+selected.variants.df %>% 
+  ggplot(aes(x = POS, y = factor(Tissue, levels = rev(tissue_order)))) +
+    geom_point(shape = 108, size = 6, color = "black") +
+    geom_rect(data = low.coverage.regions, aes(xmin = x1, xmax = x2, ymin = y1, ymax = y2), fill = "red", alpha = 0.5) +
+    xlab("Position") +
+  
+    # == Annotations of genes == #
+  
+    # 3' Start
+    annotate(geom = "text", x = (N$Start - 150), y = .25, label = "3'", size = 8) +
+
+    # Nucleoprotein
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#d97634", col = "black", size = .1) +
+    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 8) +
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 16 ,
+                   alpha = .05, fill = "#d97634", size = .1) +  
+    # P/V/C
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#fcff3d", col = "black", size = .1) +
+    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 8) +
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 16 ,
+               alpha = .05, fill = "#fcff3d", size = .1) +
+    # Matrix protein
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#0db51b", col = "black", size = .1) +
+    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 8)  +
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 16 ,
+               alpha = .05, fill = "#0db51b", size = .1) +
+    # Fusion protein
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#6A3D9A", col = "black", size = .1) +
+    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .25, label = "F", family = "helvetica", size = 8) +
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 16 ,
+               alpha = .05, fill = "#6A3D9A", size = .1) +
+    # Hemagluttinin
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#0251d9", col = "black", size = .1) +
+    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 8) +
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 16,
+               alpha = .05, fill = "#0251d9", size = .1) +
+    # Large protein
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#bf1515", col = "black", size = .1) +
+    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 8) +
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 16 ,
+               alpha = .05, fill = "#bf1515", size = .1) +
+    
+    # 5' Start
+    annotate(geom = "text", x = (L$Stop + 150), y =  .25, label = "5'", size = 8) +
+
+    theme_classic() +
+    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+    theme(legend.position="bottom", legend.box = "horizontal") +
+    theme(legend.box.background = element_rect(colour = "black")) +
+    theme(text=element_text(size=24)) + 
+    theme(axis.text.x = element_text(size=28)) + 
+    theme(axis.title.x = element_text(size=30)) + 
+    theme(plot.title = element_text(hjust = 0.5))  +
+    theme(axis.title.y = element_blank()) +
+    scale_x_continuous(limits=c(-150,16150), breaks = c(0, 5000, 10000, 15000)) +
+    theme(legend.position = "none") 
+
+ggsave("./ext-figure-3.png", width = 18, height = 12, dpi = 300)
+
+```
+
+
+
+
 

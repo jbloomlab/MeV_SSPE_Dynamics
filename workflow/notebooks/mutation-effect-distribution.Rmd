@@ -29,12 +29,6 @@ knitr::opts_chunk$set(echo = FALSE)
 ## List of all packages needed
 packages = c("tidyverse")
 
-## Check that packages are installed, if not, install them
-# installed_packages <- packages %in% rownames(installed.packages())
-# if (any(installed_packages == FALSE)) {
-#   install.packages(packages[!installed_packages])
-# }
-
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
 
@@ -45,7 +39,7 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 # Data from lofreq and varscan labeled with subclonal haplotypes
-updated.data = "../../results/variants/assigned_variants.csv"
+updated.data = "../../results/variants/polished_variants.csv"
 
 # Consensus mutations in the SSPE genome
 consensus.data = "../../config/ref/annotated_SSPE_consensus_snps.csv"
@@ -111,7 +105,7 @@ consensus.df %>%
     ylab("Frequency") +
     theme_bw(20)
 
-ggsave("../../results/figures/mutation-effect.png", width =  7, height = 4, dpi = 300)
+# ggsave("../../results/figures/mutation-effect.png", width =  7, height = 4, dpi = 300)
 
 ```
 
@@ -130,7 +124,7 @@ consensus.df %>%
     ylab("Frequency") +
     theme_bw(20)
 
-ggsave("../../results/figures/adar-mutations.png", width =  7, height = 4, dpi = 300)
+# ggsave("../../results/figures/adar-mutations.png", width =  7, height = 4, dpi = 300)
 
 ```
 
@@ -156,12 +150,15 @@ consensus.df %>%
     ylab("Mutations per Base") +
     theme_bw(20)
 
-ggsave("../../results/figures/mutation-rate-per-gene.png", width =  7, height = 4, dpi = 300)
+# ggsave("../../results/figures/mutation-rate-per-gene.png", width =  7, height = 4, dpi = 300)
 
 ```
+
 ```{r}
 
-updated.df = read_csv(updated.data)
+updated.df = read_csv(updated.data) %>% 
+  select(-Haplotype) %>% 
+  rename(Haplotype = "Haplotype_Name")
 
 ```
 
@@ -169,6 +166,8 @@ updated.df = read_csv(updated.data)
 ```{r warning=F, message=F, fig.align='center', fig.width=15, fig.height=10}
 
 haplotype.order = c("SSPE Ancestor",
+                    "genome 01",
+                    "genome 1",
                     "cluster 1",
                     "cluster 2",
                     "cluster 3",
@@ -177,15 +176,15 @@ haplotype.order = c("SSPE Ancestor",
                     "cluster 6",
                     "cluster 7",
                     "cluster 8",
+                    "genome 2",
                     "cluster 9",
                     "cluster 10",
                     "cluster 11",
                     "cluster 12",
                     "cluster 13",
                     "cluster 14", 
-                    "genome-1-1",
-                    "genome-1",
-                    "genome-2")
+                    "cluster 15",
+                    "cluster 16")
 
 ancestral.snps = consensus.df %>% 
   select(POS, REF, ALT, Gene, ADAR, Effect) %>% 
@@ -206,57 +205,64 @@ updated.df %>%
   rbind(., ancestral.snps) %>% 
   
   ggplot(aes(x = POS, y = factor(Haplotype, levels = rev(haplotype.order)), col = Background)) +
-    geom_point(aes(shape = ADAR), size = 6) +
+    geom_point(aes(shape = ADAR), size = 8) +
     xlab("Position") +
   
   
-    scale_x_continuous(limits=c(0,16000)) +
-    scale_color_manual(values=c("#307EC2", "#B63F3E", "black")) +
-    scale_shape_manual(values = c(108, 4)) +
+    scale_x_continuous(limits=c(-180,16180), breaks=c(0, 5000, 10000, 15000)) +
+    scale_color_manual(values=c("#307EC2", "#B63F3E", "black"), labels = c("G 1", "G 2", "Ancestor")) +
+    scale_shape_manual(name="A to G / U to C", values = c(108, 4)) +
     
     # == Annotations of genes == #
-  
+    
+  # 3' Start
+    annotate(geom = "text", x = (N$Start - 180), y = .05, label = "3'", size = 8) +
+
     # Nucleoprotein
     annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.5, ymax = .5 ,
-               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
+               alpha = .5, fill = "#d97634", col = "black", size = .1) +
     annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .05, label = "N", size = 8) +
     annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.5, ymax = 17.5 ,
-                   alpha = .1, fill = "dodgerblue2", size = .1) +  
+                   alpha = .05, fill = "#d97634", size = .1) +  
     # P/V/C
     annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = -.5, ymax = .5 ,
-               alpha = .2, fill = "yellow3", col = "black", size = .1) +
+               alpha = .5, fill = "#fcff3d", col = "black", size = .1) +
     annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .05, label = "P/V/C", size = 8) +
     annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = -.5, ymax = 17.5 ,
-               alpha = .1, fill = "yellow3", size = .1) +
+               alpha = .05, fill = "#fcff3d", size = .1) +
     # Matrix protein
     annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = -.5, ymax = .5 ,
-               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
+               alpha = .5, fill = "#0db51b", col = "black", size = .1) +
     annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .05, label = "M", size = 8)  +
     annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = -.5, ymax = 17.5 ,
-               alpha = .1, fill = "#FF7F00", size = .1) +
+               alpha = .05, fill = "#0db51b", size = .1) +
     # Fusion protein
     annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = -.5, ymax = .5 ,
-               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
+               alpha = .5, fill = "#6A3D9A", col = "black", size = .1) +
     annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .05, label = "F", size = 8) +
     annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = -.5, ymax = 17.5 ,
-               alpha = .1, fill = "#6A3D9A", size = .1) +
+               alpha = .05, fill = "#6A3D9A", size = .1) +
     # Hemagluttinin
     annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = -.5, ymax = .5 ,
-               alpha = .2, fill = "green4", col = "black", size = .1) +
+               alpha = .5, fill = "#0251d9", col = "black", size = .1) +
     annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .05, label = "H", size = 8) +
     annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = -.5, ymax = 17.5,
-               alpha = .1, fill = "green4", size = .1) +
+               alpha = .05, fill = "#0251d9", size = .1) +
     # Large protein
     annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = -.5, ymax = .5 ,
-               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
+               alpha = .5, fill = "#bf1515", col = "black", size = .1) +
     annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .05, label = "L", size = 8) +
     annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = -.5, ymax = 17.5 ,
-               alpha = .1, fill = "#E31A1C", size = .1) +
+               alpha = .05, fill = "#bf1515", size = .1) +
+  
+    # 5' Start
+    annotate(geom = "text", x = (L$Stop + 180), y =  .05, label = "5'", size = 8) +
+
   
     theme_classic() +
     theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
     theme(legend.position="bottom", legend.box = "horizontal") +
-    theme(legend.box.background = element_rect(colour = "black")) +
+    theme(legend.background = element_rect(color = NA)) +
     theme(text=element_text(size=24)) + 
     theme(axis.text.x = element_text(size=28)) + 
     theme(axis.title.x = element_text(size=30)) + 
@@ -264,7 +270,7 @@ updated.df %>%
     theme(axis.title.y = element_blank()) +
     theme(legend.position = "bottom")  
 
-ggsave("../../results/figures/mutations-per-haplotype.png", width =  15, height = 10, dpi = 300)
+ggsave("./figure-5a.png", width = 15, height = 10, dpi = 300)
 
 ```
 
