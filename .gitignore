@@ -26,3 +26,7 @@ results/variants/*
 !results/variants/genotyped_variants.csv
 !results/variants/clustered_variants.csv
 !results/notebooks
+
+workflow/notebooks/*.png
+workflow/notebooks/*.html
+workflow/notebooks/*.csv
