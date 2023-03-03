@@ -1,5 +1,5 @@
 ---
-title: "8. Haplotype Phylogenetic Tree"
+title: "7. Analyze Spruce Output"
 author:
     - "Will Hannon"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to make a phylogenetic tree of the haplotypes identified in the brain. I'll then make a Muller plot of the haplotypes to see how the frequencies of these shift in the brain. 
+The goal of this notebook is to visualize the phylogenetic relationship of the haplotypes identified in the previous notebooks. I'll read in the tree's from `SPRUCE` as implemented by `MACHINA` and make a nicely formatted tree where branch lenght corresponds to mutations. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -24,23 +24,13 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
 
-## List of all packages needed -- non-BioManager installed
-packages = c("tidyverse", "tidytree", "phytools", "knitr", "BiocManager", "ggmuller")
-bio.packages = c("ggtree", "treeio")
-## Check that packages are installed, if not, install them
-installed_packages <- packages %in% rownames(installed.packages())
-if (any(installed_packages == FALSE)) {
-  install.packages(packages[!installed_packages])
-}
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse", "foreach", "emdbook", "RColorBrewer", "data.table", "ggnetwork", "network", "tidytree", "phytools", "ggtree", "treeio")
+
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
-
-bio_installed_packages <- bio.packages %in% rownames(installed.packages())
-if (any(bio_installed_packages == FALSE)) {
-  BiocManager::install(bio.packages[!bio_installed_packages])
-}
-## Packages loading
-invisible(lapply(c(bio.packages), library, character.only = TRUE))
 
 ```
 
@@ -48,27 +38,160 @@ invisible(lapply(c(bio.packages), library, character.only = TRUE))
 
 ## ==== File paths input data ==== ##
 
-# Data from lofreq and varscan labeled with subclonal haplotypes
-updated.data = "../../results/variants/assigned_variants.csv"
+if (exists("snakemake")) {
 
-# Annotations 
-annotations.filepath = "../../config/annotations.csv"
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = snakemake@input[["1"]]
+  # Phylogeny 
+  phylo.data =  snakemake@input[["2"]]
 
-# Phylogenetic tree path
-phylo.data = "../../results/phylogeny/haplotype-sequences.fa.treefile"
+
+} else {
+
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = "../../results/variants/validated_variants.csv"
+
+  # Spruce 
+  spruce.data = "../../results/variants/spruce_output.tsv"
+  
+  # Phylogeny 
+  phylo.data = "../../results/phylogeny/haplotype-sequences.fa.treefile"
+
+}
 
 ```
+
+## SPRUCE Trees
+
+A set of phylogenetic relationships were fit to the data using the algorithm `SPRUCE`. We'll visualize these possible trees below. Ultimately, the goal is filter these based on bridging reads. 
+
+```{r Read Spruce, echo=T}
+
+# Code adapted from Alison Feder #
+
+# Read in the output from Machina
+machina.output = readLines( "../../results/variants/spruce_output.tsv")
+
+# Process the output trees into edges
+treenum = NA
+tree.df = foreach(i = 1:length(machina.output), .combine = "rbind") %do% {
+    toParse = machina.output[i]
+    if(grepl("^#", toParse)){ return(NULL) }
+    if(grepl("#trees", toParse)){ return(NULL) }
+    if(grepl("#edges", toParse)){
+        treenum = gsub("[0-9]+ \\#edges, ", "", toParse)
+        return(NULL)
+    }
+    tibble(toParse) %>%
+      separate(toParse, into = c("from", "to"), sep = " ") %>%
+        mutate(tree = treenum)
+}
+tree.df = tree.df %>%
+  mutate(treenum = as.numeric(gsub("tree ", "", tree)))
+
+head(tree.df)
+
+```
+
+Let's visualize these trees below. 
+
+```{r Color Palletes, echo=F}
+
+# Make a color scheme for the haplotypes
+## Genome-1
+genome.1.haplotypes = c( "cluster 1", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 7", "cluster 8", "genome 1", "genome 01")
+genome.1.colors = brewer.pal(length(genome.1.haplotypes), "Blues")
+names(genome.1.colors) = genome.1.haplotypes
+
+## Genome-2
+genome.2.haplotypes = c("cluster 9", "cluster 10", "cluster 11", "cluster 12", "cluster 13", "genome 2")
+genome.2.colors = brewer.pal(length(genome.2.haplotypes), "YlOrRd")
+names(genome.2.colors) = genome.2.haplotypes
+
+## Cluster 6
+cluster.6.haplotype = c("cluster 6")
+cluster.6.color = brewer.pal(8, "Purples")[8]
+names(cluster.6.color) = cluster.6.haplotype
+
+## Combine
+haplotype.colors = c(genome.1.colors, genome.2.colors, cluster.6.color)
+# names(haplotype.colors) = gsub(" ", "_", names(haplotype.colors ))
+haplotype.colors = c(haplotype.colors , "Anc" = "black")
+# cluster 1 is too light
+haplotype.colors['cluster 1'] = "#bdbebf"
+
+## Set the Compartment Colors 
+# Frontal Cortex
+FCs = c("Frontal Cortex 1", "Frontal Cortex 2", "Frontal Cortex 3")
+FCs.colors = brewer.pal(length(FCs), "Greens")
+names(FCs.colors) = FCs
+# Internal Compartments
+Internal = c("Cerebellum Nucleus", "Cerebellum", "Midbrain", "Internal Capsule", "Brain Stem", "UBS", "Hippocampus")
+Internal.colors = brewer.pal(length(Internal), "YlOrRd")
+names(Internal.colors) = Internal
+# Other Lobes
+Other =  c("Occipital Lobe", "Temporal Lobe", "Parietal Lobe")
+Other.colors = brewer.pal(length(Other), "Blues")
+names(Other.colors) = Other
+# Combine
+Compartment.cols = c(FCs.colors, Internal.colors, Other.colors)
+names(Compartment.cols) = gsub(" ", "_", names(Compartment.cols))
+
+```
+
+```{r Spruce Trees, message=F, warning=F, fig.align='center', fig.width=25, fig.height=25, echo=T}
+
+names(haplotype.colors) = gsub(" ", "_", names(haplotype.colors ))
+ggnetwork(network(tree.df, multiple = TRUE), by = "treenum")  %>%
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+    theme_blank() +
+    geom_edges(curvature = 0.15) +
+    geom_nodes(aes(fill = vertex.names), size = 10, pch = 21) +
+    scale_fill_manual(values = haplotype.colors) +
+    geom_nodetext(aes(y = y - 0.06, label =  vertex.names), color = "black", size = 2) +
+    facet_wrap(~treenum) +
+    theme(legend.position = "none")
+
+```
+The first tree fit's our current assumptions about the data. 
+
+```{r Example Tree, message=F, warning=F, fig.align='center', fig.width=6, fig.height=6, echo=T}
+
+tree.df = tree.df %>% 
+  mutate(from = str_replace_all(from, "_", " "),
+         to = str_replace_all(to, "_", " ")
+         )
+
+names(haplotype.colors) = gsub("_", " ", names(haplotype.colors))
+
+ggnetwork(network(tree.df %>% filter(treenum == 1), multiple = TRUE), by = "treenum")  %>%
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+    theme_blank() +
+    geom_edges(curvature = 0.15) +
+    geom_nodes(aes(fill = vertex.names), size = 15, pch = 21) +
+    scale_fill_manual(values = haplotype.colors) +
+    geom_nodetext(aes(y = y - 0.06, label =  vertex.names), color = "black", size = 4) +
+    theme(legend.position = "none")
+
+ggsave("./example_tree.png", width = 8, height = 8)
+
+```
+
+## Visualize with IQ-TREE
+
+But, what we're missing is branch length. I took the sequences for each of these haplotypes and generated a phylogenetic tree using `iqtree`. 
 
 ```{r Import Data, echo=T}
 
 # Assigned SNPs with haplotype labels 
 updated.df = read_csv(updated.data, show_col_types = FALSE)
 
+
 # Get the background of the haplotypes
 background.label = updated.df %>% 
-  select(Haplotype, Background) %>% 
-  filter(!Haplotype %in% c("subclonal", "genome-2", "genome-1", "genome-1-1", "both")) %>% 
-  mutate(Haplotype = str_replace(Haplotype, " ", "_")) %>% 
+  select(Haplotype_Name, Background) %>% 
+  filter(!Haplotype_Name %in% c("subclonal", "genome 2", "genome 01", "genome 1", "both")) %>% 
+  mutate(Haplotype_Name = str_replace(Haplotype_Name, " ", "_")) %>% 
   distinct()
 
 # Phylogenetic tree 
@@ -86,22 +209,18 @@ tree@phylo = root(tree@phylo, outgroup = root)
 
 ```
 
-## Plot the Tree
-
-Here is the tree structure of the haplotypes in the brain.
-
 ```{r Add data to the tree, echo=T}
 
 # Add the background labels
-tree.df = left_join(as_tibble(tree), background.label, by=c("label" = "Haplotype")) 
+tree.df = left_join(as_tibble(tree), background.label, by=c("label" = "Haplotype_Name")) 
 
 ```
 
 ```{r Label Backgrounds, echo=T}
 
 # Get the nodes in the tree
-genome.1.node = MRCA(tree, filter(background.label, Background == "genome-1")$Haplotype)
-genome.2.node = MRCA(tree, filter(background.label, Background == "genome-2")$Haplotype)
+genome.1.node = MRCA(tree, filter(background.label, Background == "genome-1")$Haplotype_Name)
+genome.2.node = MRCA(tree, filter(background.label, Background == "genome-2")$Haplotype_Name)
 genome.1.offspring = offspring(tree, genome.1.node)
 genome.2.offspring = offspring(tree, genome.2.node)
 

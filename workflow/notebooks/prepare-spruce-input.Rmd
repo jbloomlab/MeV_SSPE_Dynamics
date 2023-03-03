@@ -482,5 +482,7 @@ write.table(spruce.output,
             col.names = FALSE,
             append = TRUE)
 
+# Run this command
+paste0("generatemutationtrees ", machina.input.data, " > ", "../../results/variants/spruce_output.tsv")
 ```
 
