@@ -1,0 +1,12 @@
+channels:
+  - anaconda
+  - bioconda
+dependencies:
+  - iqtree
+  - blast
+  - mafft
+  - python
+  - biopython
+  - pandas 
+  - numpy
+  - jupyterlab
