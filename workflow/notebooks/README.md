@@ -20,11 +20,19 @@ The notebooks are numbered based on their order in the analysis. While the order
 
 4. `genotype-subclonal-snps.Rmd`
 
-> In this notebook, I use bridging reads and a probabalistic approach written by Alison Feder to assign SNPs to either `Genome 1` or `Genome 2`. This can be used to determine the most likely background for the sub-haplotypes identified in the previous notebook.
+> In this notebook, I use bridging reads and a probabalistic approach written by Alison Feder to assign SNPs to either `Genome 1` or `Genome 2`. This can be used to determine the most likely background for the sub-haplotypes identified in the previous notebook. _TODO: we need to refine the bridging reads approach_
 
-5. `establish-haplotype-relationship.Rmd`
+5. `validate-subclonal-haplotypes.Rmd`
 
-> In this notebook, use a combination of the 'pigeon-hole principle' and bridging reads to determine how the clusters of mutations (sub-haplotypes) are likely related to one another.
+> In this notebook, I validate and organize the nomenclature for the subclonal haplotypes that were identified in the previous notebook `cluster-subclonal-mutations.Rmd` and assigned to `Genome 1` or `Genome 2` in the previous notebook `genotype-subclonal-snps.Rmd`. I used bridging reads over any given pair of SNPs to do this validation along with checking for violations in our assumptions about the sum of allele frequencies in each tissue specimen. I also make `extended figure 4` and `figure 5a`.
+
+6. `prepare-spruce-input.Rmd`
+
+> In this notebook, I prepare the reads for `SPRUCE` as implemented by the software program `MACHINA`. I try different approaches to add 'uncertainty' around our estimates for the mean haplotype frequecny in each tissue. I also generate `figure 5b` and `figure 5c`.
+
+7. `analyze-spruce-output.Rmd`
+
+> In this notebook, I parse the output of `SPRUCE` to examine the trees that fit our haplotype data. Then, I attempt to use bridging reads to filter down this list of trees into those that are possible given our data.
 
 ---
 
