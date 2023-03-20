@@ -1,5 +1,5 @@
 ---
-title: "2. Cluster Major Genotypes"
+title: "2. Determine Major Genotypes"
 author:
     - "Will Hannon"
 date: "`r format(Sys.time(), '%d %B, %Y')`"

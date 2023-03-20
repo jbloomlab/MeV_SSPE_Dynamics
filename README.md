@@ -5,7 +5,7 @@ map of measles diversification in the brain.
 
 ## Methods
 
-We performed all bioinformatic analysis of the RNA sequencing of tissue samples isolated from the brain using a computational pipeline created with the [Snakemake workflow language](https://snakemake.readthedocs.io/en/stable/). This pipeline can be found at https://github.com/jbloomlab/MeV_SSPE_Dynamics.
+We performed all bioinformatic analysis of the RNA sequencing of tissue samples isolated from the brain using a computational pipeline created with the [Snakemake workflow language](https://snakemake.readthedocs.io/en/stable/). This pipeline can be found in the [workflow folder](https://github.com/jbloomlab/MeV_SSPE_Dynamics/workflow) of this repository.
 
 Before aligning reads from the 15 brain isolates, we processed reads by trimming adaptor sequences and low quailty bases with [`fastp`](https://github.com/OpenGene/fastp). After trimming the reads, we extracted the viral reads from human reads using a kmer matching approach from [`BBduk`](https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/bbduk-guide/).
 
@@ -23,7 +23,6 @@ _You can see a graphical represenation of this pipeline [here](dag.pdf)_
 
 `config`: Contains the file that configure the analysis (i.e., the reference genome)
 `workflow`:
-
 - `envs`: Conda files for creating environments
 - `rules`: Snakemake files with pipeline rules
 - `script`: Scripts used by the pipeline

@@ -1,24 +1,24 @@
 # Analysis Notebooks
 
-This subdirectory contains the `python` and `R` notebooks that analyze the sequencing data and variant calls from the pipeline. Below is a description of the analysis performed in each notebook.
+This subdirectory contains the `python` and `R` notebooks that perform the bulk of the analysis for this project. Below is a description of what each notebook contains.
 
-The notebooks are numbered based on their order in the analysis. While the order is important for some notebooks (e.g. an output is used in a downstream notebook), in others it is arbitrary.
+I numbered the notebooks based on their order in the analysis. Although order is important for some notebooks (e.g. an output is used in a downstream notebook), in others it is arbitrary.
 
 ## Overview
 
-1. `quality-control.Rmd`
+1. `01-process-variant-calls.Rmd`
 
-> In this notebook, I assess the quailty of variant calls by comparing and combining the variants called by different tools (`lofreq` and `varscan`). I also make **extended data figure 3** of the paper where I plot the location of mutations in each genome highlighting regions with low coverage.
+> In this notebook, I assess the quailty of variant calls by comparing and combining the variants identified by two different variant calling tools (`lofreq` and `varscan`).
 
-2. `identify-backgrounds.Rmd`
+2. `02-determine-main-genotypes.Rmd`
 
-> In this notebook, I make a first pass at identifying variants that are on the same viral haplotype by clustering mutations by their correlation in frequency across _every tissue sample_. Here, I identify `Genome 1` and `Genome 2`. I also identify the `Genome 1` sub-haplotype that's present in every sample but the Frontal Cortex 2 specimen.
+> In this notebook, I identify the main viral genotypes by clustering mutations that were identified in **every single tissue sample** at a detectable frequency (>= 2%). This approach identified 3 viral haplotypes/genotypes that were present in every sample; `Genome 1`, `Genome 2`, and a `Genome 1` subhaplotype that's dominant in all samples but the frontal cortex 2 sample.
 
-3. `cluster-subclonal-mutations.Rmd`
+3. `03-phase-subclonal-mutations.Rmd`
 
 > In this notebook, I take the analysis in the previous notebook farther to see if we can cluster mutations by frequency even if they aren't found in every tissue sample. I use this analysis to identify subclonal haplotypes that are on the background of either `Genome-1` or `Genome-2`. I also assign mutations that are missing from the original `Genome-1` or `Genome-2` assignment due to low depth in one or more tissue. Finally, I made `figure 2`, `figure 4a`, and `figure 4b`.
 
-4. `genotype-subclonal-snps.Rmd`
+4. `04-assign-haplotype-backgrounds.Rmd`
 
 > In this notebook, I use bridging reads and a probabalistic approach written by Alison Feder to assign SNPs to either `Genome 1` or `Genome 2`. This can be used to determine the most likely background for the sub-haplotypes identified in the previous notebook. _TODO: we need to refine the bridging reads approach_
 
