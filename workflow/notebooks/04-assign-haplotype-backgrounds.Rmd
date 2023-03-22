@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to establish a method to genotype SNPs as either belonging to `genome-1` or to `genome-2`. 
+The goal of this notebook is to establish a method to genotype SNPs as either belonging to `Genome 1` or to `Genome 2`. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -44,14 +44,19 @@ if (exists("snakemake")) {
   # Annotations for MeV genes
   annotations.filepath = snakemake@params[["annotations"]]
   # Counts of SNPs on reads belonging to genome-1 or genome-2
-  reads.data = snakemake@input[[1]]
+  g1.g2.reads.data = snakemake@input[[1]]
+  # Counts of all reads bridging pairs of SNP positions
+  bridging.reads.data = snakemake@input[[2]]
+
 } else {
   # Data from lofreq and varscan labeled with subclonal haplotypes
   updated.data = "../../results/variants/clustered_variants.csv"
   # Annotations for MeV genes
   annotations.filepath = "../../config/annotations.csv"
   # Counts of SNPs on reads belonging to genome-1 or genome-2
-  reads.data = "../../results/bridging/genotyped.csv"
+  g1.g2.reads.data = "../../results/bridging/genotyped.csv"
+  # Counts of all reads bridging pairs of SNP positions
+  bridging.reads.data = "../../results/bridging/bridging_reads.csv"
 }
 
 ```
@@ -69,15 +74,33 @@ if (exists("snakemake")) {
 
 ```
 
-```{r Import and Format Data, echo = T}
+```{r Import and Format Data, message=F, echo = T}
 
-# Download the variants
-haplotypes = read_csv(updated.data, show_col_types = FALSE) %>% 
+# Import the SNPs that were phased in the previous notebook 
+updated.df = read_csv(updated.data, show_col_types = FALSE)
+
+# Get the haplotype names for each SNP
+haplotypes.label = updated.df %>% 
   select(Haplotype, SNP) %>% 
   distinct()
 
-# Download the counts of SNPs on genome-1 and genome-2 
-genotyping.df = read_csv(reads.data, show_col_types = FALSE) %>% 
+# Expand the haplotyped SNPs to have records for all tissues
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP",)), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., distinct(select(updated.df, c("SNP", "POS"))), by = c("SNP")) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Calculate the mean haplotype frequency across each tissue
+haplotype.mean = expanded.df %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF = mean(AF))
+
+# Import the counts of SNPs on genome-1 and genome-2 backgrounds for the CliqueSNV approach 
+genotyping.df = read_csv(g1.g2.reads.data, show_col_types = FALSE) %>% 
   select(!AF) %>% 
   rename(total = DP, 
          var = OBSV) %>% 
@@ -86,12 +109,16 @@ genotyping.df = read_csv(reads.data, show_col_types = FALSE) %>%
               values_from = c(total, var), 
               names_sep = "_", 
               values_fill = 0) %>% 
-  left_join(., haplotypes, by = "SNP") 
+  left_join(., haplotypes.label, by = "SNP") 
 
-# Haplotyped SNPs for linking subclonal SNPs
-updated.df = read_csv(updated.data, show_col_types = FALSE)
+# Import the reads that bridge all pairs of SNPs for the multinomial approach
+bridging.df = read_csv(bridging.reads.data, show_col_types = FALSE)
 
 ```
+
+## CliqueSNV Approach 
+
+This approach resembles is derived from a part of the [`CliqueSNV`](https://academic.oup.com/nar/article/49/17/e102/6313236) algorithm. It's used to determine if SNPs are linked or forbidden from counts of reads overlapping both SNPs. This is one of two approaches that we'll use to assign the haplotypes to `Genome 1` or `Genome 2`. 
 
 ```{r Assign Genotypes for each Tau, echo=T}
 
@@ -130,9 +157,8 @@ assignmentsByTau = foreach(tau = taus, .combine = "rbind")%do%{
 
 ```
 
-## G1/G2 assignment for Haplotypes
-
 What are the `genome1/2` assignments for each identified haplotype for every value of `tau` between `0.00001` and `1`? 
+
 ```{r Assignments for all Haplotypes, warning=F, message=F, fig.align='center', fig.width=18, fig.height=14}
 
 assignment.order = c('G1', 'G2', 'G1/G2', '-')
@@ -167,8 +193,6 @@ assignmentsByTau %>%
 
 ```
 
-## Genotype Subclonal SNPs
-
 How does this look for subclonal SNPs? Can we assign most to either `genome-1` or `genome-2`? 
 
 ```{r Annotations, message=FALSE, warning=FALSE}
@@ -185,7 +209,6 @@ H = annotations.df %>% dplyr::filter(Locus == "H")
 L = annotations.df %>% dplyr::filter(Locus == "L")
 
 ```
-
 
 ```{r Subclonal Assignments, warning=F, message=F, echo = T}
 
@@ -287,16 +310,303 @@ left_join(subclonal.assignments, genotyping.df) %>%
 
 ```
 
+## Expected Frequency Approach
+
+This approach relies on the expected frequencies of haplotypes given that they've arisen on the background of either`Genome 1` or `Genome 2`. We'll compute the log likelihood of observing the counts a SNP on a given background (SNP - G1, SNP - G2, WT - G1, WT - G2) given the expected frequencies under the assumption that the SNP is on the background of one genotype or the other. We'll sum the log likelihood over every tissue sample.
+
+```{r Compute Log Likelihood, echo = T}
+
+# TODO: Remove the f_g2 argument, it's not necessary
+
+loglik.g1.g2 = function(x11, x10, x01, x00, f_g1, f_g2, f_c, error) {
+  
+  # Compute the expected frequencies of each possible haplotype given the SNP is on Genome 1
+  f11 = (f_c + error) / (1 + 4*error)
+  f10 = max(0 + error, (f_g1 - f_c + error)) / (1 + 4*error)
+  f01 = (0 + error) / (1 + 4*error)
+  f00 = 1 - f11 - f10 - f01 
+
+  # What is the probability of observing x11, x10, x01, x00 under these expected frequencies?
+  lik.g1 = -(dmultinom(c(x11, x10, x01, x00), prob = c(f11, f10, f01, f00), log = T))
+
+  # Compute the expected frequencies of each possible haplotype given the SNP is on Genome 1
+  f11 = (0 + error)/(1 + 4*error)
+  f01 = (f_c + error)/(1 + 4*error)
+  f00 = max(0 + error, 1 - f_g1 - f01 + error)/(1 + 4*error)
+  f10 = 1 - f11 - f00 - f01 
+  
+  # What is the probability of observing x11, x10, x01, x00 under these expected frequencies?
+  lik.g2 = -(dmultinom(c(x11, x10, x01, x00), prob = c(f11, f10, f01, f00), log = T))
+  
+  return(c(lik.g1, lik.g2))
+}
+
+```
+
+I called the overlapping reads by position rather than SNP. This means that it's possible for there to be reads that overlap SNPs in more than one haplotype. There is only one position where this is the case. I'll mask this position below. 
+
+```{r Format Bridging Reads, echo = T}
+
+# Cutoff for minimum bridging depth
+min.bridging.depth = 10
+  
+# Labels for the haplotypes
+haplotype.labels = updated.df %>% 
+  select(POS, Haplotype) %>% 
+  distinct()
+
+# Duplicate Positions 
+# TODO: Update the bridging read script to allele rather than position
+masked.shared.positions = haplotype.labels %>% 
+  group_by(POS) %>% 
+  count() %>% 
+  filter(n > 1) %>% 
+  pull(POS)
+
+# Filter the bridging read pairs 
+labled.bridging.df = bridging.df %>% 
+  # Add the snp_1 haplotype label
+  left_join(., dplyr::rename(haplotype.labels, snp_1 = POS, hap_1 = Haplotype)) %>% 
+  # Add the snp_2 haplotype label
+  left_join(., dplyr::rename(haplotype.labels, snp_2 = POS, hap_2 = Haplotype)) %>% 
+  # Remove all subclonal SNPs
+  filter(hap_1 != "subclonal" & hap_2 != "subclonal") %>% 
+  # We're only comparing to the two major genotypes
+  filter(hap_1 %in% c("genome-1", "genome-2") | hap_2 %in% c("genome-1", "genome-2")) %>% 
+  # We don't want cases with only genome 1 or genome 2
+  filter(!(hap_1 %in% c("genome-1", "genome-2") & hap_2 %in% c("genome-1", "genome-2"))) %>% 
+  # Mask the shared position 
+  filter(!snp_1 %in% masked.shared.positions, !snp_2 %in% masked.shared.positions) %>% 
+  # Filter based one some minimum bridging depth cutoff
+  filter((`00` + `01` + `10` + `11`) > min.bridging.depth)
+
+# Get all pairs to test 
+pairs.to.test = labled.bridging.df %>% 
+  select(snp_1, snp_2) %>% 
+  distinct()
+
+```
+
+```{r Test All SNP Pairs, echo = T}
+
+# Check the background for all SNPs with reads bridging to Genome 1 or Genome 2
+background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do% {
+
+    # Print out the progress 
+    if(i %% 100 == 0){
+      print(paste("Testing pair", i, "out of", nrow(pairs.to.test), "total pairs..."))
+    }
+
+    # Get the SNPs being tested 
+    snp.1 = (pairs.to.test %>% slice(n = i))$snp_1
+    snp.2 = (pairs.to.test %>% slice(n = i))$snp_2
+
+    # Get some info on the SNPs being compared
+    snp.1.info = expanded.df %>%
+      filter(POS == snp.1) %>% 
+      select(SNP, POS, Tissue, Haplotype)
+    snp.2.info = expanded.df %>%
+      filter(POS == snp.2)  %>% 
+      select(SNP, POS, Tissue, Haplotype)
+    
+    # Get the haplotypes for the SNPs being compared
+    snp.1.haplotype = unique(snp.1.info$Haplotype)[1]
+    snp.2.haplotype = unique(snp.2.info$Haplotype)[1]
+
+    # Get the haplotype of the cluster SNP
+    haplotype = setdiff(c(snp.1.haplotype, snp.2.haplotype), c("genome-1", "genome-2"))
+    
+    # Get the read overlaps for these two SNPs
+    overlaps = labled.bridging.df %>% filter(snp_1 == snp.1 & snp_2 == snp.2)
+
+    # Test the linkage to genome 1 & 2 for each tissue sample
+    tissue.test = foreach(tissue = unique(haplotype.mean$Tissue), .combine = "rbind") %do% {
+      
+      # Get the frequency of genome 1 and genome 2 in this tissue
+      g1.freq = haplotype.mean %>%
+        filter(Haplotype == "genome-1", Tissue == tissue) %>% 
+        pull(AF)
+      g2.freq = haplotype.mean %>%
+        filter(Haplotype == "genome-2", Tissue == tissue) %>% 
+        pull(AF)
+
+      # Normalize the frequencies of genome 1 and genome 2
+      total.freq = g1.freq + g2.freq
+      g1.freq = g1.freq / total.freq
+      g2.freq = g2.freq / total.freq
+      
+      # Get the haplotype ("cluster") frequency for the comparison 
+      cluster.freq = max(0, filter(haplotype.mean, Haplotype == haplotype, Tissue == tissue)$AF)
+
+      # Get the bridging reads for this tissue comparison
+      comparison.read.counts = overlaps %>%
+        filter(Tissue == tissue)
+
+      # x11 refers to the number of reads overlapping the cluster SNP and the G1 SNP
+      x11 = NA
+      # x10 is the number of reads overlapping G1 SNP and NOT the cluster SNP
+      x10 = NA
+      # x01 is the number of reads overlapping the cluster SNP and NOT the G1 SNP
+      x01 = NA
+      # x00 is the number of reads NOT overlapping the cluster SNP and NOT overlapping the G1 SNP
+      x00 = NA
+
+      # There are a total of four possible configurations of the data: 
+      if(!snp.1.haplotype %in% c("genome-1", "genome-2") & snp.2.haplotype %in% c("genome-1", "genome-2")){
+        # 1. snp_1 is the cluster SNP, and snp_2 is G1 linked
+        if (snp.2.haplotype == "genome-1") {
+            x11 = comparison.read.counts$`11`
+            x10 = comparison.read.counts$`01`
+            x01 = comparison.read.counts$`10`
+            x00 = comparison.read.counts$`00`
+          }
+        # 2. snp_1 is the cluster SNP, and snp_2 is G2 linked         
+        if (snp.2.haplotype == "genome-2") {
+              x11 = comparison.read.counts$`10`
+              x10 = comparison.read.counts$`00`
+              x01 = comparison.read.counts$`11`
+              x00 = comparison.read.counts$`01`
+        }
+      }
+      if(!snp.2.haplotype %in% c("genome-1", "genome-2") & snp.1.haplotype %in% c("genome-1", "genome-2")) {
+        # 3. snp_1 is NOT the cluster SNP, and snp_1 is G1 linked
+        if (snp.1.haplotype == "genome-1") {
+          x11 = comparison.read.counts$`11`
+          x10 = comparison.read.counts$`10`
+          x01 = comparison.read.counts$`01`
+          x00 = comparison.read.counts$`00`
+        }
+        # 4. snp_1 is NOT the cluster SNP, and snp_1 is G2 linked
+        if (snp.1.haplotype == "genome-2") {
+          x11 = comparison.read.counts$`01`
+          x10 = comparison.read.counts$`00`
+          x01 = comparison.read.counts$`11`
+          x00 = comparison.read.counts$`10`
+        }
+      }
+
+      # Compute the log likelihood for the counts determined above
+      if (nrow(comparison.read.counts) == 0) {
+        results = c(NA, NA)
+      } else {
+        results = loglik.g1.g2(x11, x10, x01, x00, g1.freq, g2.freq, cluster.freq/total.freq, error = 0.01)
+      }
+      # Return the results
+      return(results)
+    }
+    
+    # Sum the log likelihoods across all tissues 
+    AICs = 2 * apply(tissue.test, 2, sum, na.rm = TRUE)
+    # Calculate relative likelihood 
+    AIC.min = min(AICs)
+    rel.g1 = exp((AIC.min - AICs[1])/2)
+    rel.g2 = exp((AIC.min - AICs[2])/2)
+    lik.g1 = rel.g1 / (rel.g1 + rel.g2)
+    lik.g2 = rel.g2 / (rel.g1 + rel.g2)
+    # Determine the background
+    background = c("genome-1", "genome-2", "neither")[
+      c(lik.g1 > 0.95, lik.g2 > 0.95, 
+        lik.g1 < 0.95 & lik.g2 < 0.95)
+      ]
+    # Write to a row
+    tibble(snp_1 = snp.1, snp_2 = snp.2, background, haplotype, lik.g1, lik.g2)
+
+}
+
+```
+How well do pairs of SNPs agree for each cluster/haplotype?
+
+```{r Expected Frequency Assignment, fig.align='center', fig.width=16, fig.height=8}
+
+cols = c("grey", "#bf1515", "#0251d9")
+names(cols) = c("neither", "genome-2", "genome-1")
+
+snp_positions = expanded.df %>%
+  group_by(Haplotype, POS) %>% 
+  count() %>%
+  rename(haplotype = Haplotype) %>% 
+  filter(!is.element(haplotype, c("both", "subclonal", "genome-1", "genome-2")))
+
+background.test.df %>% 
+  filter(haplotype != "both") %>%
+  group_by(haplotype) %>%
+  mutate(ind = 1:n() )%>% 
+  ggplot() +
+    geom_segment(aes(x = snp_1, xend = snp_2, y = ind, yend = ind, col = background), size = 3) + 
+    geom_vline(data = snp_positions, aes(xintercept = POS), col = "black", size = 0.1) +
+    facet_wrap(~haplotype, scales = "free_y") + labs(x = "Position", y = "SNP pair") + 
+    scale_color_manual(values = cols) + theme(legend.position = "none") + 
+    theme_classic(18) 
+
+```
+
+Group by the background assignments for each cluster and count (`G1`, `G2`, and `Neither`). Assign a definitive background based on the max of the two. Pull out the SNPs that disagree for each cluster condition.
+
+```{r Summarize Background Assignment, echo=T}
+
+background.assignment = background.test.df %>% 
+  filter(haplotype != "both") %>% 
+  group_by(haplotype, background) %>% 
+  count() %>% 
+  pivot_wider(names_from = background, values_from = n, values_fill = 0) %>% 
+  select(!neither) %>% 
+  mutate(Background = case_when(
+    `genome-1` > `genome-2` ~ 'genome-1',
+    `genome-1` < `genome-2` ~ 'genome-2'
+  )) %>% 
+  mutate(Disagreement = if_else((`genome-1` > 0 & `genome-2` > 0), T, F))
+
+```
+
+There are `r nrow(filter(background.assignment, Disagreement))` clusters with SNPs that were assigned to both `genome-1` and `genome-2`. Let's look at these more closely.
+
+```{r Disagreeing Clusters, echo=F}
+
+disagreeing.clusters = background.assignment %>% 
+  filter(Disagreement)
+
+disagreeing.clusters
+
+```
+
+Both of these clusters were assigned to `genome-2`. Let's pull out the SNPs from these clusters that mapped to `genome-1` and see where these SNPs are from. 
+
+```{r Disagreeing SNPs, echo=T}
+
+disagreeing.snps = background.test.df %>% 
+  filter(haplotype %in% disagreeing.clusters$haplotype,
+         background == 'genome-1') %>% 
+  pull(snp_2) %>% 
+  unique()
+
+disagreeing.snps
+
+```
+
+There are only `r length(disagreeing.snps)` that disagree from the main cluster assignment, both in the Matrix protein where we expected the highest amount of homoplasy. It's possible that these SNPs are present on *both* `genome-1` and `genome-2`. 
+
+## Annotate the Haplotypes 
+
+We're going to use the 'expected frequency` method to assign genotypes to the phased clusters. This method is most explainable, although both methods ultimately give the same results. 
 
 ```{r Write out the assignments, echo=TRUE}
 
-fully.assigned.df = left_join(updated.df, subclonal.assignments, by = "SNP") %>% 
-  rename(Proposed_Background = type) %>% 
-  mutate(Proposed_Background = case_when(Proposed_Background == "G1" ~ "genome-1",
-                                         Proposed_Background == "G2" ~ "genome-2",
-                                         is.na(Proposed_Background) ~ "unknown"))
+# Add rows for the non-cluster haplotype options
+background.assignment = background.assignment %>% 
+  ungroup() %>% 
+  select(Haplotype = haplotype, Background) %>% 
+  add_row(Haplotype = "genome-1", Background = "genome-1") %>% 
+  add_row(Haplotype = "genome-2", Background = "genome-2") %>% 
+  add_row(Haplotype = "both", Background = "both") %>% 
+  add_row(Haplotype = "subclonal", Background = "subclonal") 
 
-write_csv(fully.assigned.df, output.path)
+# Drop the old background assignments and add the new ones
+assigned.df = updated.df %>% 
+  select(!Background) %>% 
+  left_join(., background.assignment, by = "Haplotype")
+  
+# Write out to assigned file. 
+write_csv(assigned.df, output.path)
 
 ```
 
