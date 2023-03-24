@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is look at how the haplotype frequencies add up in each compartment. In addition to this, we want to prepare the data for SPRUCE to see if we can use this frequency information to fit plausible phylogenetic trees. 
+The goal of this notebook is look at how the haplotype frequencies add up in each compartment. In addition to this, we want to prepare the data for SPRUCE to see if we can use this frequency information to fit plausible phylogenetic trees. **The output of this notebook is a file formatted for the tool `MACHINA` and it's tree-building algorithm `SPRUCE`.**
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -186,7 +186,6 @@ haplotype.order = c("cluster 1",
                     "cluster 14")
 ```
 
-
 ### Genome 2
 
 What does this look like for Genome 2?
@@ -332,6 +331,7 @@ haplotype.mean %>%
 ggsave("./figure-5bc.png", width = 8, height = 10)
 
 ```
+
 However, we want to confirm these relationships as best as possible using a systematic approach with the algorithm SPRUCE. Using SPRUCE, we can fit trees to the data based on haplotype frequency. Then, we can use bridging reads to filter out trees that link haplotypes that we know must be forbidden based on the overlapping reads. 
 
 ## Prepare data for Spruce
@@ -433,7 +433,7 @@ spruce.data.alt.df %>%
 
 ```
 
-Currently, it's not clear exactly which method is optimal. One approach takes into account the depth in the tissue to get variance, the other takes into account the variance in freuency in each tissue. We'll stick with the latter fequency-based approach for now. 
+Currently, it's not clear exactly which method is optimal. One approach takes into account the depth in the tissue to get variance, the other takes into account the variance in frequency in each tissue. We'll stick with the latter frequency-based approach for now. 
 
 ```{r Write out Data}
 

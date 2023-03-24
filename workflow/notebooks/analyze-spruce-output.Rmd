@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to visualize the phylogenetic relationship of the haplotypes identified in the previous notebooks. I'll read in the tree's from `SPRUCE` as implemented by `MACHINA` and make a nicely formatted tree where branch lenght corresponds to mutations. 
+The goal of this notebook is to visualize the phylogenetic relationship of the haplotypes identified in the previous notebooks. I'll read in the tree's from `SPRUCE` as implemented by `MACHINA` and make a nicely formatted tree where branch length corresponds to mutations. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -56,6 +56,9 @@ if (exists("snakemake")) {
   
   # Phylogeny 
   phylo.data = "../../results/phylogeny/haplotype-sequences.fa.treefile"
+  
+  # Counts of all reads bridging pairs of SNP positions
+  bridging.reads.data = "../../results/bridging/bridging_reads.csv"
 
 }
 
@@ -153,6 +156,271 @@ ggnetwork(network(tree.df, multiple = TRUE), by = "treenum")  %>%
     theme(legend.position = "none")
 
 ```
+
+There are total of `r length(unique(tree.df$treenum))` trees that fit to the data. Below, I'll use bridging reads to test the edges for these trees and filter them down to a final plausible set of trees. 
+
+## Filter SPRUCE Trees
+
+First, we all ready have some knowledge about whether a cluster is descended from either `Genome 1` or ` Genome 2`. Let's filter out trees based on this information.
+
+```{r Genotype Background Violations, echo = T}
+
+cluster.backgrounds = read_csv(updated.data, show_col_types = F) %>% 
+  select(Haplotype = Haplotype_Name, Background) %>% 
+  distinct() %>% 
+  filter(!Haplotype %in% c("both", "subclonal")) %>% 
+  add_row(Haplotype = "Anc", Background = "Anc")
+  
+
+trees = unique(tree.df$tree)
+tree.violations = c()
+for (tree.name in trees) {
+  
+  # Get the edges from this tree
+  tree.edges = tree.df %>% 
+    filter(tree == tree.name) %>% 
+    select(from, to)
+  
+  # Check if there is a violation in any of the edges
+  for (i in 1:nrow(tree.edges)) {
+    # Get the edge
+    edge = tree.edges[i,]
+    # Get the cluster names 
+    from = str_replace_all(edge$from, "_", " ")
+    to = str_replace_all(edge$to, "_", " ")
+    # Get backgrounds 
+    from.background = cluster.backgrounds %>% 
+      filter(Haplotype == from) %>% 
+      pull(Background)
+    to.background = cluster.backgrounds %>% 
+      filter(Haplotype == to) %>% 
+      pull(Background)
+    
+    if (from == "genome 01" & to.background != "genome-1") {
+      print(paste("Violation in", tree.name, " -- from:", from, "to:", to))
+      tree.violations = c(tree.violations, tree.name)
+    } else if (from == "genome 2" & to.background != "genome-2") {
+      print(paste("Violation in", tree.name, " -- from:", from, "to:", to))
+      tree.violations = c(tree.violations, tree.name)
+    } else if (from.background == "genome-1" & to.background == "genome-2") {
+      print(paste("Violation in", tree.name, " -- from:", from, "to:", to))
+      tree.violations = c(tree.violations, tree.name)
+    } else if (from.background == "genome-2" & to.background == "genome-1") {
+      print(paste("Violation in", tree.name, " -- from:", from, "to:", to))
+      tree.violations = c(tree.violations, tree.name)
+    }
+  }
+}
+
+tree.violations = unique(tree.violations)
+
+```
+
+There are `r length(tree.violations)` of `r length(unique(tree.df$treenum))` total trees that violate the bridging read support for a given background (`Genome 1` or `Genome 2`).
+
+The remaining `r length(unique(tree.df$treenum)) - length(tree.violations)` trees are still plausible. Can we determine which of these are more likely?
+
+## Check Valid Trees
+
+Below, I'm going to check the valid trees for support. Essentially, if one cluster is linked to another in tree, I'll test to see if it's more likely these arose independently or they are truly linked because they are nested. I'll do this with bridging reads. 
+
+```{r Valid Trees, echo=T, fig.align='center', fig.width=8, fig.height=4}
+
+valid.trees.df = tree.df %>% 
+  filter(!tree %in% tree.violations)
+
+ggnetwork(network(valid.trees.df, multiple = TRUE), by = "treenum")  %>%
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+    theme_blank() +
+    geom_edges(curvature = 0.15) +
+    geom_nodes(aes(fill = vertex.names), size = 10, pch = 21) +
+    scale_fill_manual(values = haplotype.colors) +
+    geom_nodetext(aes(y = y - 0.06, label =  vertex.names), color = "black", size = 2) +
+    facet_wrap(~treenum) +
+    theme(legend.position = "none")  
+
+```
+
+```{r Format Data, echo = T}
+
+# Import the SNPs that were phased in the previous notebook 
+updated.df = read_csv(updated.data, show_col_types = FALSE)
+
+# Get the haplotype names for each SNP
+haplotypes.label = updated.df %>% 
+  select(Haplotype, SNP) %>% 
+  distinct()
+
+# Expand the haplotyped SNPs to have records for all tissues
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP",)), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., distinct(select(updated.df, c("SNP", "POS"))), by = c("SNP")) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Calculate the mean haplotype frequency across each tissue
+haplotype.mean = expanded.df %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF = mean(AF))
+
+# Import the reads that bridge all pairs of SNPs for the multinomial approach
+bridging.df = read_csv(bridging.reads.data, show_col_types = FALSE)
+
+```
+
+```{r Format Bridging Reads, message=F, echo = T}
+
+# Cutoff for minimum bridging depth
+min.bridging.depth = 10
+  
+# Labels for the haplotypes
+haplotype.labels = updated.df %>% 
+  select(POS, Haplotype) %>% 
+  distinct()
+
+# Filter the bridging read pairs 
+labled.bridging.df = bridging.df %>% 
+  # Add the snp_1 haplotype label
+  left_join(., dplyr::rename(haplotype.labels, snp_1 = POS, hap_1 = Haplotype)) %>% 
+  # Add the snp_2 haplotype label
+  left_join(., dplyr::rename(haplotype.labels, snp_2 = POS, hap_2 = Haplotype)) %>% 
+  # Filter based one some minimum bridging depth cutoff
+  filter((`00` + `01` + `10` + `11`) > min.bridging.depth)
+
+```
+
+```{r Check Valid Trees, echo = T}
+
+for (tree.name in unique(valid.trees.df$tree)) {
+  
+  # Get the edges from this tree
+  tree.edges = valid.trees.df %>% 
+    filter(tree == tree.name) %>% 
+    select(from, to)
+  
+  # Check the evidence for nesting between clusters that are linked on the tree
+  for (i in 1:nrow(tree.edges)) {
+    # Get the edge
+    edge = tree.edges[i,]
+    # Get the cluster names 
+    from = str_replace_all(edge$from, "_", " ")
+    to = str_replace_all(edge$to, "_", " ")
+    # Check if it's a cluster nested in another cluster
+    if(str_detect(from, "cluster") & str_detect(to, "cluster")) {
+      
+      # Status statement
+      print(paste("Checking if", to, "is descended from", from, "for", tree.name))
+      
+      # Filter the bridging reads for overlaps between the clusters being tested
+      snp.pairs = labled.bridging.df %>%  
+        filter((hap_1 == to & hap_2 == from) | (hap_1 == from & hap_2 == to)) %>% 
+        select(snp_1, snp_2) %>% 
+        distinct()
+
+      for (i in 1:nrow(snp.pairs)) {
+        # Get the positions of the SNPs
+        snp.1 = snp.pairs[i,]$snp_1
+        snp.2 = snp.pairs[i,]$snp_2
+        
+        # Print the SNP overlaps being checked 
+        print(paste("Checking SNPs:", snp.1, "v.", snp.2))
+        
+        # Get the cluster names
+        snp.1.cluster = haplotype.labels %>% 
+          filter(POS == snp.1) %>% 
+          pull()
+        snp.2.cluster = haplotype.labels %>% 
+          filter(POS == snp.2) %>% 
+          pull()
+        
+        # Get the overlaps
+        overlaps = labled.bridging.df %>% 
+          filter(snp_1 == snp.1, snp_2 == snp.2)
+        
+        # Iterate over each tissue in the overlaps
+        tissue.test = foreach(i = 1:nrow(overlaps), .combine = "rbind") %do% {
+          
+          # Get the overlaps tissue being tested
+          tissue = overlaps[i,]$Tissue
+          tissue.overlaps = overlaps %>% 
+            filter(Tissue == tissue)
+
+          # Depending on which cluster is `to` and `from`, get the overlapping counts
+          if (snp.1.cluster == from) {
+            # Get the frequency of each cluster
+            f.anc = max(0, (haplotype.mean %>% filter(Haplotype == snp.1.cluster, Tissue == tissue))$AF)
+            f.dec = max(0, (haplotype.mean %>% filter(Haplotype == snp.2.cluster, Tissue == tissue))$AF)
+            print(c(f.anc, f.dec))
+            # x11 is the number of reads overlapping both anc. and desc.
+            # x10 is the number of reads overlapping !anc. and desc.
+            # x01 is the number of reads overlapping anc. and !desc.
+            # x00 is the number of reads overlapping neither anc. nor desc.
+            x11 = tissue.overlaps$`11`
+            x10 = tissue.overlaps$`10`
+            x01 = tissue.overlaps$`01`
+            x00 = tissue.overlaps$`00`
+          } else {
+            # If the second snp in the pair is the ancestor, flip the counts
+            f.anc = max(0, (haplotype.mean %>% filter(Haplotype == snp.2.cluster, Tissue == tissue))$AF)
+            f.dec = max(0, (haplotype.mean %>% filter(Haplotype == snp.1.cluster, Tissue == tissue))$AF)
+            x11 = tissue.overlaps$`11`
+            x10 = tissue.overlaps$`01`
+            x01 = tissue.overlaps$`10`
+            x00 = tissue.overlaps$`00`
+          }
+          
+          # We are going to compare two situations:
+          
+          # 1: 3 descends from 2 and they're both of G1
+          # 2: 3 and 2 both descend from G1 independently
+          error = 0.01
+          
+          # Under situation 1, what are the expected frequencies of x11, x10, x01 and x00?
+          f11 = (f.dec + error)/(1 + 4*error)
+          f10 = max(0 + error, (f.anc - f.dec + error))/(1 + 4*error)
+          f01 = (0 + error)/(1 + 4*error)
+          f00 = 1 - f11 - f10 - f01
+          lik.related = -(dmultinom(c(x11, x10, x01, x00), prob = c(f11, f10, f01, f00), log=T))
+          
+          # Under situation 2, what are the expected frequencies of x11, x10, x01 and x00?
+          f11 = (0 + error)/(1 + 4*error)
+          f01 = (f.dec + error)/(1 + 4*error)
+          f10 = (f.anc + error)/(1 + 4*error)
+          f00 = 1 - f11 - f01 - f10
+          lik.unrelated = -(dmultinom(c(x11, x10, x01, x00), prob = c(f11, f10, f01, f00), log=T))
+          
+          # Print the results
+          results = c(lik.related, lik.unrelated)
+          
+        }
+
+        AICs = 2 * apply(tissue.test, 2, sum, na.rm = TRUE)
+        AIC.min = min(AICs)
+        rel.related = exp((AIC.min - AICs[1])/2)
+        rel.unrelated = exp((AIC.min - AICs[2])/2)
+        lik.related = rel.related/(rel.related + rel.unrelated)
+        lik.unrelated = rel.unrelated/(rel.related + rel.unrelated)
+        
+        linkage.information = c("Nesting", "Non-nesting", "neither")[c(lik.related > 0.95, lik.unrelated > 0.95,
+                                                                       lik.related < 0.95 & lik.unrelated < 0.95)]
+        print(linkage.information)
+              
+      }
+      
+    }
+
+  }
+  
+}
+
+```
+
+
+## Below should be moved to a new notebook! 
+
 The first tree fit's our current assumptions about the data. 
 
 ```{r Example Tree, message=F, warning=F, fig.align='center', fig.width=6, fig.height=6, echo=T}

@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to establish a method to genotype SNPs as either belonging to `Genome 1` or to `Genome 2`. 
+The goal of this notebook is to establish a method to genotype SNPs as either belonging to `Genome 1` or to `Genome 2`. **The output of this notebook is a set of phased variants with genome 1 and genome 2 background assignments.**
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -67,9 +67,14 @@ if (exists("snakemake")) {
 
 # Path to save the results
 if (exists("snakemake")) {
-  output.path = snakemake@params[["outcsv"]]
+  assigned.output.path = snakemake@params[["assigned"]]
+  assigned.output.path = snakemake@params[["backgrounds"]]
 } else {
-  output.path = "../../results/variants/assigned_variants.csv"
+  # G1 and G2 assigned variants
+  assigned.output.path = "../../results/variants/assigned_variants.csv"
+  # Assignments for each cluster SNP 
+  background.output.path = "../../results/bridging/cluster_snp_backgrounds.csv"
+
 }
 
 ```
@@ -345,7 +350,7 @@ loglik.g1.g2 = function(x11, x10, x01, x00, f_g1, f_g2, f_c, error) {
 
 I called the overlapping reads by position rather than SNP. This means that it's possible for there to be reads that overlap SNPs in more than one haplotype. There is only one position where this is the case. I'll mask this position below. 
 
-```{r Format Bridging Reads, echo = T}
+```{r Format Bridging Reads, message=F, echo = T}
 
 # Cutoff for minimum bridging depth
 min.bridging.depth = 10
@@ -386,6 +391,8 @@ pairs.to.test = labled.bridging.df %>%
   distinct()
 
 ```
+
+Below, I'll test all of the pairs of SNPs where one SNP belongs to a phased cluster/haplotype and the other SNP belongs to either `Genome 1` or `Genome 2`.
 
 ```{r Test All SNP Pairs, echo = T}
 
@@ -514,7 +521,8 @@ background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do%
 }
 
 ```
-How well do pairs of SNPs agree for each cluster/haplotype?
+
+Now, let's see how the pairs of SNPs agree for each cluster/haplotype.
 
 ```{r Expected Frequency Assignment, fig.align='center', fig.width=16, fig.height=8}
 
@@ -606,9 +614,14 @@ assigned.df = updated.df %>%
   left_join(., background.assignment, by = "Haplotype")
   
 # Write out to assigned file. 
-write_csv(assigned.df, output.path)
+write_csv(assigned.df, assigned.output.path)
 
 ```
 
+```{r Write out the SNP backgrounds, echo=T}
+
+write_csv(background.test.df, background.output.path)
+
+```
 
 

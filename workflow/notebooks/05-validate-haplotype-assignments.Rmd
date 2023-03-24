@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to validate and organize the nomenclature for the subclonal haplotypes that were identified in the previous notebook `cluster-subclonal-mutations.Rmd` and assigned to `Genome 1` or `Genome 2` in the previous notebook `genotype-subclonal-snps.Rmd`. I'll use the bridging reads over any given pair of SNPs to do this validation along with checking for violations in our assumptions about the sum of allele frequencies in each tissue specimen.
+The goal of this notebook is to validate and organize the nomenclature for the subclonal haplotypes that were identified and assigned to `Genome 1` or `Genome 2` in the previous notebooks. I'll use the bridging reads over any given pair of SNPs to do this validation along with checking for violations in our assumptions about the sum of allele frequencies in each tissue specimen. **The output of this notebook is a final set of phased variants with cluster/haplotype assignments.**
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -51,7 +51,9 @@ if (exists("snakemake")) {
   
   # 'Ancestral' mutation included in the reference
   ancestral.data = snakemake@params[['ancestral']]
-
+  
+  # G1 or G2 linkage information for all phased SNPs including disagreements 
+  background.data = snakemake@params[['backgrounds']]
 
 } else {
 
@@ -66,7 +68,10 @@ if (exists("snakemake")) {
   
   # 'Ancestral' mutation included in the reference
   ancestral.data = "../../config/ref/annotated_SSPE_consensus_snps.csv"
-
+  
+  # G1 or G2 linkage information for all phased SNPs including disagreements 
+  background.data = "../../results/bridging/cluster_snp_backgrounds.csv"
+  
 }
 
 ```
@@ -96,25 +101,7 @@ First, using the previous notebook (`genotype-subclonal-snps.Rmd`), let's assign
 ```{r Assign Genotypes, echo=T}
 
 # Read in the variants with G1, G2, and G1-1 labeled
-labeled.df = read_csv(updated.data, show_col_types = FALSE) %>% 
-  mutate(Background = case_when(Haplotype == "cluster 1" ~ "genome-1",
-                               Haplotype == "cluster 2" ~ "genome-1",
-                               Haplotype == "cluster 3" ~ "genome-1",
-                               Haplotype == "cluster 4" ~ "genome-1",
-                               Haplotype == "cluster 5" ~ "genome-2",
-                               Haplotype == "cluster 6" ~ "genome-2",
-                               Haplotype == "cluster 7" ~ "genome-2",
-                               Haplotype == "cluster 8" ~ "genome-1",
-                               Haplotype == "cluster 9" ~ "genome-1",
-                               Haplotype == "cluster 10" ~ "genome-1",
-                               Haplotype == "cluster 11" ~ "genome-2",
-                               Haplotype == "cluster 12" ~ "genome-1",
-                               Haplotype == "cluster 13" ~ "genome-1",
-                               Haplotype == "cluster 14" ~ "genome-1",
-                               Haplotype == "cluster 15" ~ "genome-2",
-                               Haplotype == "cluster 16" ~ "genome-2",
-                              TRUE ~ Background)) 
-
+labeled.df = read_csv(updated.data, show_col_types = FALSE) 
 
 ```
 
@@ -359,7 +346,7 @@ I don't know if we can really be that confident in this cluster, so let's remove
 ```{r Remove cluster 15, echo=T}
 
 labeled.df = labeled.df %>% 
-  mutate(Background = case_when(Haplotype == "cluster 15" ~ "unknown",
+  mutate(Background = case_when(Haplotype == "cluster 15" ~ "subclonal",
                                 TRUE ~ Background)) %>% 
   mutate(Haplotype = case_when(Haplotype == "cluster 15" ~ "subclonal",
                                 TRUE ~ Haplotype))
@@ -453,7 +440,7 @@ expanded.df %>%
 print(paste("Excluding", length(exclude.from.cluster.10), "SNPs from cluster 10."))
 
 labeled.df = labeled.df %>% 
-  mutate(Background = case_when(POS %in% exclude.from.cluster.10 ~ "unknown",
+  mutate(Background = case_when(POS %in% exclude.from.cluster.10 ~ "subclonal",
                                 TRUE ~ Background)) %>% 
   mutate(Haplotype = case_when(POS %in% exclude.from.cluster.10 ~ "subclonal",
                                 TRUE ~ Haplotype))
@@ -508,7 +495,7 @@ rank_bridging_reads("cluster 13", labeled.df, SNPassignmentsByTau, min.freq = 0.
   unique()
 
 labeled.df = labeled.df %>% 
-  mutate(Background = case_when(Haplotype == "cluster 13" ~ "unknown",
+  mutate(Background = case_when(Haplotype == "cluster 13" ~ "subclonal",
                                 TRUE ~ Background)) %>% 
   mutate(Haplotype = case_when(Haplotype == "cluster 13" ~ "subclonal",
                                 TRUE ~ Haplotype))
@@ -609,7 +596,7 @@ expanded.df %>%
 
 
 labeled.df = labeled.df %>% 
-  mutate(Background = case_when((POS %in% exclude.from.cluster.11) ~ "unknown",
+  mutate(Background = case_when((POS %in% exclude.from.cluster.11) ~ "subclonal",
                                 TRUE ~ Background)) %>% 
   mutate(Haplotype = case_when((POS %in% exclude.from.cluster.11) ~ "subclonal",
                                 TRUE ~ Haplotype))

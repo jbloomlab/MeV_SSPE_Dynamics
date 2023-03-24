@@ -16,15 +16,15 @@ I numbered the notebooks based on their order in the analysis. Although order is
 
 3. `03-phase-subclonal-mutations.Rmd`
 
-> In this notebook, I take the analysis in the previous notebook farther to see if we can cluster mutations by frequency even if they aren't found in every tissue sample. I use this analysis to identify subclonal haplotypes that are on the background of either `Genome-1` or `Genome-2`. I also assign mutations that are missing from the original `Genome-1` or `Genome-2` assignment due to low depth in one or more tissue. Finally, I made `figure 2`, `figure 4a`, and `figure 4b`.
+> In this notebook, I use the approach developed in the previous notebook phase viral mutations into haplotypes even if those mutations weren't identified in every tissue sample.
 
 4. `04-assign-haplotype-backgrounds.Rmd`
 
-> In this notebook, I use bridging reads and a probabalistic approach written by Alison Feder to assign SNPs to either `Genome 1` or `Genome 2`. This can be used to determine the most likely background for the sub-haplotypes identified in the previous notebook. _TODO: we need to refine the bridging reads approach_
+> In this notebook, I use bridging reads and a probabalistic approach developed by Alison Feder to determine which of the main genotypes each of the haplotypes identified in the previous notebook was descended from.
 
-5. `validate-subclonal-haplotypes.Rmd`
+5. `05-validate-haplotype-assignments.Rmd`
 
-> In this notebook, I validate and organize the nomenclature for the subclonal haplotypes that were identified in the previous notebook `cluster-subclonal-mutations.Rmd` and assigned to `Genome 1` or `Genome 2` in the previous notebook `genotype-subclonal-snps.Rmd`. I used bridging reads over any given pair of SNPs to do this validation along with checking for violations in our assumptions about the sum of allele frequencies in each tissue specimen. I also make `extended figure 4` and `figure 5a`.
+> In this notebook, I validated and refined the haplotypes that I phased in the previous notebook. I also standardize the nomenclature of the haplotypes going forward. 
 
 6. `prepare-spruce-input.Rmd`
 
