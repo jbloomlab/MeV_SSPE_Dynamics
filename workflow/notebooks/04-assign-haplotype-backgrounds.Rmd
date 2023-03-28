@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to establish a method to genotype SNPs as either belonging to `Genome 1` or to `Genome 2`. **The output of this notebook is a set of phased variants with genome 1 and genome 2 background assignments.**
+The goal of this notebook is to establish a method to genotype SNPs as either belonging to `Genome 1` or to `Genome 2`. **The output of this notebook is a set of phased variants with genome 1 and genome 2 background assignments renamed so that haplotypes are in sequential order.**
 
 ```{r Setup, include=FALSE}
 require("knitr")

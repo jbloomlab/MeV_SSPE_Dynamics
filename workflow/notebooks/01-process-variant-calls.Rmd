@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to determine the quality of the variant calling data. What is the overlap between the different variant callers? How much coverage do we have in each sample? Are there samples that are problematic in some way? Finally, how do we combine variants from `lofreq` and `varscan` into a unified set to go forward with?
+The goal of this notebook is to determine the quality of the variant calling data. What is the overlap between the different variant callers? How much coverage do we have in each sample? Are there samples that are problematic in some way? Finally, how do we combine variants from `lofreq` and `varscan` into a unified set to go forward with? **The output of this notebook is a unified set of variants from `lofreq` and `varscan`.** 
 
 ```{r Setup, include=FALSE}
 require("knitr")

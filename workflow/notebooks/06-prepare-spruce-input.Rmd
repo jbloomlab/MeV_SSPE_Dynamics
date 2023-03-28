@@ -267,6 +267,8 @@ haplotype.mean %>%
       theme(axis.text.x = element_text(angle = 35, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
+ggsave("genome_1_clusters_unnested.png", width = 8, height = 5, dpi = 300)
+
 ```
 
 In Genome 1 there is a violation in SSPE 2 where two clusters sum to a frequency greater than the frequency of Genome 1 in that specimen. This gives us reason to suspect that these clusters are related in some way. In particular, that cluster 3 is on the background of cluster 4. So, I'll subtract the average allele frequency of cluster 3 from cluster 4 in every compartment and see what this looks like. 

@@ -1,5 +1,5 @@
 ---
-title: "6. Cluster Tissues Spatially"
+title: "10. Cluster Tissues Spatially"
 author:
     - "Will Hannon"
 date: "`r format(Sys.time(), '%d %B, %Y')`"

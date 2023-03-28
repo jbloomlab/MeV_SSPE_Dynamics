@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to phase other clusters of variants using the same approach we used to define the 'genotypes' `Genome-1` and `Genome-2` in the previous notebook.
+The goal of this notebook is to phase other clusters of variants using the same approach we used to define the 'genotypes' `Genome-1` and `Genome-2` in the previous notebook. **The output of this notebook is the list of variants annotated by whether they are part of any haplotypes/clusters**. 
 
 ```{r Setup, include=FALSE}
 require("knitr")

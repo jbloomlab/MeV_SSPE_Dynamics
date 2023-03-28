@@ -19,7 +19,7 @@ As observed by the Cattaneo lab, there are clearly sets of mutations that move t
 
 The goal of this notebook is to formalize an approach to phase these mutations by clustering variants that have strongly correlated frequencies across tissue specimens using  k-medoids clustering applied to a correlation matrix. 
 
-In this notebook, I identify the 'genotypes' `Genome 1` and `Genome 2`. In addition to these two 'genotypes', I identify a third set of mutations that appears to arise on `Genome 1`, but is at very low frequency in the Frontal Cortex 2 specimen.
+In this notebook, I identify the 'genotypes' `Genome 1` and `Genome 2`. In addition to these two 'genotypes', I identify a third set of mutations that appears to arise on `Genome 1`, but is at very low frequency in the Frontal Cortex 2 specimen. **The output of this notebook is the current list of variants annotated by whether they are `Genome 1`, `Genome 2`, `Genome-1-1`, or `subclonal.`**
 
 ```{r Setup, include=FALSE}
 require("knitr")
