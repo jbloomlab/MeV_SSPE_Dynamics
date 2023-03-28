@@ -15,14 +15,14 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to determine the quality of the variant calling data. What is the overlap between the different variant callers? How much coverage do we have in each sample? Are there samples that are problematic in some way? Finally, how do we combine variants from `lofreq` and `varscan` into a unified set to go forward with? **The output of this notebook is a unified set of variants from `lofreq` and `varscan`.** 
+The goal of this notebook is to determine the quality of the variant calling data. What is the overlap between the different variant callers? How much coverage do we have in each sample? Are there samples that are problematic in some way? Finally, how do we combine variants from `lofreq` and `varscan` into a unified set to go forward with? **The output of this notebook is a filtered and unified set of variants from `lofreq` and `varscan`.** 
 
 ```{r Setup, include=FALSE}
 require("knitr")
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-```{r Required Packages, message=FALSE, warning=FALSE}
+```{r Required Packages, echp = T, message = F, warning = F}
 
 ## ==== Install Required Packages ==== ##
 
@@ -32,57 +32,83 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
 
-The data used in this notebook are the variant calls from the programs `varscan` and `lofreq`. Variants were identified relative an `SSPE` patient-specific consensus genome that incorporates SNPs present at >=90% frequency in more than 12/15 total brain samples. We consider these SNPs to be 'fixed' and 'ancestral' to all viral sequences isolated from the brain.
+The data used in this notebook are the variant calls from the programs `varscan` and `lofreq`. Variants were called relative an `SSPE` patient-specific consensus genome that incorporates SNPs present at >=90% frequency in more than 12/15 total brain samples. We consider these SNPs to be 'fixed' and 'ancestral' to all viral sequences isolated from the brain.
 
-```{r Inputs, echo=T}
+```{r Inputs, echo = T}
 
 ## ==== File paths input data ==== ##
 
 if (exists("snakemake")) {
+  
   # Variant data parsed from from lofreq and varscan VCF files
   variant.data = snakemake@input[[1]]
-  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  
+  # Annotations for the standard Measles ORFs for making figures.
   annotations.filepath = snakemake@params[['annotations']]
+  
   # Depth information for each tissue 
   merged.depth = snakemake@input[[2]]
 
 } else {
+  
   # Variant data parsed from from lofreq and varscan VCF files
   variant.data = "../../results/variants/variants.csv"
+  
   # Annotations for the standard Measles ORFs ~ for making pretty figures.
   annotations.filepath = "../../config/annotations.csv"
+  
   # Depth information for each tissue 
   merged.depth = "../../results/coverage/merged.depth"
 }
 
 ```
 
-This notebook produces a filtered list of variants. These are variants that are present in both `varscan` and `lofreq`.
-
-```{r Outputs, echo=T}
+```{r Outputs, echo = T}
 
 ## ==== File paths output data ==== ##
 
-# Variant calls present in both lofreq and varscan
 if (exists("snakemake")) {
+  
+  # Variant calls unified from both lofreq and varscan
   output.path = snakemake@params[['outcsv']]
+  
+  # Path to save figures
+  figure.dir = snakemake@params[['figures']]
+  
 } else {
+  
+  # Variant calls unified from both lofreq and varscan
   output.path = "../../results/variants/filtered_variants.csv"
+  
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+
 }
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
+
 ```
 
 ## Processing Variant Calls
 
-I used two different variant callers to identify mutations in the measles virus genome. In the absence of biological replicates, this is a way to control for issues in the variant calling pipelines that could result in spurious variants. In addition to these different variant calling approaches, I've set a cutoff of `200X coverage` and a minimum allele frequency of `2% of reads`. 
-
-To identify a set of mutations to go forward with, I'll combine the mutations from each variant caller in order to handle SNPs that might be lower frequency in a single sample due to low coverage. 
-
-```{r Process Data, warning=F, message=F, echo=T}
-
+```{r Filters, echo = T}
 # Minimum allele frequency to be included in analysis. 
 min_AF = 0.02
 # Minimum read depth to be included in analysis. 
 min_DP = 200
+```
+
+I used two different variant callers to identify mutations in the measles virus genome. In the absence of biological replicates, this is a way to control for issues in the variant calling pipelines that could result in spurious variants. In addition to these different variant calling approaches, I've set a cutoff of `r min_DP`X coverage and a minimum allele frequency of `r min_AF * 100`% of reads. 
+
+To identify a set of mutations to go forward with, I'll combine the mutations from each variant caller in order to handle SNPs that might be lower frequency in a single sample due to low coverage. 
+
+```{r Process Data, warning = F, message = F, echo = T}
 
 # Import lofreq data and filter
 lofreq.variant.df = read_csv(variant.data, show_col_types = FALSE) %>% 
@@ -110,7 +136,7 @@ varscan.variant.df = read_csv(variant.data, show_col_types = FALSE) %>%
 
 Reassuringly, there is a large overlap between the variants called in the two approaches. I will take the intersection of these three approaches for the downstream analysis.
 
-```{r Caller Comparison, fig.align='center', fig.width=10, fig.height=5}
+```{r Caller Comparison, message = F, fig.align='center', fig.width=10, fig.height=5}
 
 combined.variants.df = rbind(
   
@@ -120,7 +146,7 @@ mutate(varscan.variant.df, Approach = "varscan")
 
 )
 
-combined.variants.df %>% 
+caller.upset = combined.variants.df %>% 
   mutate(Identifier = paste(Tissue, SNP, sep = "-")) %>% 
   select(Identifier, Approach) %>% 
   distinct() %>% 
@@ -131,12 +157,16 @@ combined.variants.df %>%
                     "varscan"), sets.bar.color = "#56B4E9",
       order.by = "freq", empty.intersections = "on", text.scale = 1.5)
 
+png(file=paste(figure.dir, "caller_upset_plot.png", sep=""), width=8, height=5, units="in", res = 300)
+caller.upset
+dev.off()
 
+caller.upset
 ```
 
-Some mutations appear in both the `varscan` and `lofreq` data sets, but are present in one particular tissue in one approach and absent from that same tissue in another. These are likely real variants that are missed by one approach due a particular filter in the given tool. I'll correct for this by resolving the mutations are called by both approaches in some tissues, but missing from one approach in a specific tissue. I'll write these out to a file for downstream analyses (`final_variants.csv`). 
+Some mutations appear in both the `varscan` and `lofreq` data sets, but are present in one particular tissue in one approach and absent from that same tissue in another. These are likely real variants that are missed by one approach due a particular filter in the given tool. I'll correct for this by resolving the mutations that are called by both approaches in some tissues, but missing from one approach in a specific tissue. I'll write these out to a file for downstream analyses (`final_variants.csv`). 
 
-```{r Get final set of variants, message=F, warning=F, echo=T}
+```{r Get final set of variants, message = F, warning = F, echo = T}
 
 # Total unique variants called in both lofreq and varscan
 total.variants = combined.variants.df %>% 
@@ -146,7 +176,6 @@ total.variants = combined.variants.df %>%
   count() %>% 
   filter(n == 2) %>% 
   pull(SNP)
-
 
 # Then, I'll figure out how many of these are missing in a specific tissue in one method
 missing.from.one = combined.variants.df %>% 
@@ -158,13 +187,11 @@ missing.from.one = combined.variants.df %>%
 
 print(paste("There are", length(unique(pull(missing.from.one, SNP))), "instances in which one variant caller picks up on a mutation that's missing from the other."))
 
-
 # High-quality SNPs that are missing from one method in a given tissue
 snps.to.resolve = missing.from.one %>% 
   select(SNP, Accession) %>% 
   mutate(resolve_ID = paste(SNP, Accession, sep = "-")) %>% 
   pull(resolve_ID)
-
 
 # Most are in lofreq and missing from varscan. I'll add these to the varscan data.
 missing.snps.from.varscan = combined.variants.df %>% 
@@ -173,21 +200,19 @@ missing.snps.from.varscan = combined.variants.df %>%
   filter(Caller == "lofreq") %>% 
   select(!resolve_ID)
 
-
 # Added to the varscan data. 
 selected.variants.df = combined.variants.df %>% 
   filter(Caller == "varscan") %>% 
   rbind(., missing.snps.from.varscan) %>% 
   select(!c("Caller", "Virus", "Host", "R1", "R2", "Type", "Sample", "Approach")) 
 
+```
+
+```{r Write output, echo=F}
 
 print(paste("In total, there are", length(unique(pull(selected.variants.df, SNP))), "unqiue SNPs in the brain."))
 
-```
-
-```{r Write out selected variants, echo=T}
-
-print(paste("Writing out the results to", output.path))
+print(paste("Writing out the variants to", output.path))
 
 write_csv(selected.variants.df, output.path)
 
@@ -195,9 +220,9 @@ write_csv(selected.variants.df, output.path)
 
 ## Visualize Subclonal Variants
 
-What are the distribution of SNPs in the Measles genome in each tissue? This will help to identify the regions of the genome in which we can most confidently assign mutations to specific genetic backgrounds with read support. This will be relevant after we cluster mutations by frequencies below. 
+What are the distribution of these SNPs in the Measles genome in each tissue? This will help to identify the regions of the genome in which we can most confidently assign mutations to specific genetic backgrounds with read support. This will be relevant after we cluster mutations by frequencies. 
 
-```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
+```{r Annotations, message = F, warning = F, echo = F}
 
 # Import genome annotations
 annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
@@ -245,7 +270,7 @@ tissue_order = c(
 
 Note that some regions appear to have gaps in the appearance of SNPs. These are due to regions of low coverage. I'll highlight this by identifying regions where depth is less than 200 reads - the minimum required for calling a variant. 
 
-```{r Proccess Coverage Data, warning=FALSE, echo = T}
+```{r Proccess Coverage Data, warning = F, echo = T}
 
 # Import and process information about coverage/read depth
 tissue.df = selected.variants.df %>% select(Accession, Tissue) %>% unique()
@@ -277,9 +302,10 @@ low.coverage.regions = low.coverage.regions %>%
          y2 = y + 0.2) 
   
 ```
+
 Any block colored in red indicates a region of low coverage where read depth is below 200 reads. 
 
-```{r Mutation Distribution, warning=F, message=F, fig.align='center', fig.width=18, fig.height=12}
+```{r Mutation Distribution, warning = F, message = F, fig.align = 'center', fig.width = 18, fig.height = 12}
 
 selected.variants.df %>% 
   ggplot(aes(x = POS, y = factor(Tissue, levels = rev(tissue_order)))) +
@@ -344,7 +370,7 @@ selected.variants.df %>%
     scale_x_continuous(limits=c(-150,16150), breaks = c(0, 5000, 10000, 15000)) +
     theme(legend.position = "none") 
 
-ggsave("./ext-figure-3.png", width = 18, height = 12, dpi = 300)
+ggsave(paste(figure.dir, "extended-data-figure-3.png"), width = 18, height = 12, dpi = 300)
 
 ```
 
