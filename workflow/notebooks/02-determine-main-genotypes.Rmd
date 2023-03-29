@@ -15,18 +15,18 @@ output:
     smooth_scroll: yes
 ---
 
-As observed by the Cattaneo lab, there are clearly sets of mutations that move together in frequency across every spatial region of the brain. In particular, there are two sets of mutations who's average frequency appears to add up to 100% in every tissue. These two 'genotypes' appear to be the background upon which all other mutations arose. 
+As observed by the Cattaneo lab, there are clearly sets of mutations that move together in frequency across every spatial region of the brain. In particular, there are two sets of mutations who's average frequency appears to add up to 100% in every tissue. These two set of mutations appear to be ancestral to all virus variants in the brain.
 
-The goal of this notebook is to formalize an approach to phase these mutations by clustering variants that have strongly correlated frequencies across tissue specimens using  k-medoids clustering applied to a correlation matrix. 
+The goal of this notebook is to formalize an approach to phase these sets of mutations by clustering variants that have strongly correlated frequencies across multiple tissue samples using k-medoids clustering on a correlation matrix of allele frequeny. 
 
-In this notebook, I identify the 'genotypes' `Genome 1` and `Genome 2`. In addition to these two 'genotypes', I identify a third set of mutations that appears to arise on `Genome 1`, but is at very low frequency in the Frontal Cortex 2 specimen. **The output of this notebook is the current list of variants annotated by whether they are `Genome 1`, `Genome 2`, `Genome-1-1`, or `subclonal.`**
+In this notebook, I identify the 'genotypes' `Genome 1` and `Genome 2`. In addition to these two 'genotypes', I identify a third set of mutations that appears to arise on `Genome 1`, but is at very low frequency in the Frontal Cortex 2 sample **The output of this notebook is the list of variants annotated by whether they are `Genome 1`, `Genome 2`, `Genome-1-1`, or `subclonal.`**
 
-```{r Setup, include=FALSE}
+```{r Setup, include = F}
 require("knitr")
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-```{r Required Packages, message=FALSE, warning=FALSE}
+```{r Required Packages, message = F, warning = F}
 
 ## ==== Install Required Packages ==== ##
 
@@ -38,50 +38,74 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 ```
 
-The inputs for this analysis are (1) the filtered and combined variants from `quality-control.Rmd` and (2) annotations of the positions of the main Measles open reading frames, and (3) the mutations added to the patient-specific reference sequencing. 
+The inputs for this analysis are (1) the filtered and combined variants from `01-process-variant-calls.Rmd`, (2) annotations of the positions of the MeV open reading frames, and (3) the mutations in the SSPE consensus genome relative to the initial 'MeVChiTok' composite D-subtype reference. 
 
-```{r Input, echo=T}
+```{r Input, echo = T}
 
 ## ==== File paths input data ==== ##
 
 if (exists("snakemake")) {
-  # Variants that were filtered and corrected in `quality-control.Rmd`
+  
+  # Filtered and unified variant calls
   variant.data = snakemake@params[['incsv']]
-  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  
+  # Annotations for the standard Measles ORFs 
   annotations.filepath = snakemake@params[['annotations']]
-  # Path to the ancestral mutations
+  
+  # Path to the SSPE consensus mutations
   ancestral.data = snakemake@params[['ancestral']]
+  
 } else {
-  # Variants that were filtered and corrected in `quality-control.Rmd`
+  
+  # Filtered and unified variant calls
   variant.data = "../../results/variants/filtered_variants.csv"
-  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  
+  # Annotations for the standard Measles ORFs 
   annotations.filepath = "../../config/annotations.csv"
-  # Path to the ancestral mutations
+  
+  # Path to the SSPE consensus mutations
   ancestral.data = "../../config/ref/annotated_SSPE_consensus_snps.csv"
 }
 
 ```
 
-The output of this analysis are the filtered variants annotated by whether they are `Genome-1`, `Genome-2`, `Genome-1-1`, or `subclonal` to these three 'genotypes'.
-
-```{r Outputs, echo=T}
+```{r Outputs, echo = T}
 
 ## ==== File paths output data ==== ##
 
-# Path to save output
 if (exists("snakemake")) {
+  
+  # Variant calls annotated "genome-1", "genome-2", "genome-1-1", or "subclonal"
   output.path = snakemake@params[['outcsv']]
+  
+  # Path to save figures
+  figure.dir = snakemake@params[['figures']]
+
 } else {
+  
+  # Variant calls annotated "genome-1", "genome-2", "genome-1-1", or "subclonal"
   output.path = "../../results/variants/genotyped_variants.csv"
+  
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+  
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
 }
 
 ```
 
 ## Clusters of Variants
 
-This is what the data we have looks like. 
+This is what the underlying variant calling data we have looks like. 
 
-```{r Read in Data, echo=F, warning=F, message=F}
+```{r Read in Data, echo = F, warning = F, message = F}
 
 selected.variants.df = read_csv(variant.data, show_col_types = FALSE)
 
@@ -89,9 +113,10 @@ head(selected.variants.df) %>%
   kable(., caption = "Filtered Variants")
 
 ```
+
 It's clear that there groups of mutations that are found at the same frequency across tissues. This was originally observed in a pilot tissue specimen that was chipped from the frozen brain. This sample is called `SSPE 1`. 
 
-```{r Annotations, message=FALSE, warning=FALSE, echo=FALSE}
+```{r Annotations, message = F, warning = F, echo = F}
 
 # Import genome annotations
 annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
@@ -133,9 +158,9 @@ tissue_order = c(
 
 ```
 
-We can see these mutations clearly if we draw 'gates' of frequency around mutations on the plot. Below, I'm drawing 'gates' around 60-75% and 30-45% of the genome respectively.
+We can see these mutations clearly in the SSPE 1 pilot sample if we draw 'gates' of frequency around mutations on the plot. Below, I'm drawing 'gates' around 60-75% and 30-45% of the genome respectively.
 
-```{r Figure 2 Data, echo=T, warning=FALSE}
+```{r Format Pilot Data, echo = F, warning = F}
 
 # Read in the consensus SNPs
 ancestral.df = read_csv(ancestral.data, show_col_types = FALSE) %>% 
@@ -188,17 +213,11 @@ subclonal.snps = sspe.1.df %>%
 driver.snps = sspe.1.df %>% 
   filter(Driver != "")
 
-sspe.1.df %>% 
-  filter(Genotype == "CG2") %>% 
-  pull(SNP) %>% 
-  unique() %>% 
-  length()
-
 ```
 
-```{r Figure 2 plot, fig.align='center', fig.width=10, fig.height=5}
+```{r Plot Pilot Data, warning=F, echo = F, fig.align = 'center', fig.width = 10, fig.height = 5}
 
-# Make Figure 2 of the paper
+# Plot the pilot data with sample SSPE 1
 ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +
   geom_point(size = 2) + 
   geom_point(data = subclonal.snps, color = "#878484", size = 1) + 
@@ -273,37 +292,31 @@ ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape
   scale_y_continuous(breaks=c(0, 0.25, 0.5, 0.75, 1.0)) +
   theme(legend.position = "bottom") 
 
-ggsave("./figure-2.png", width = 11, height = 5, dpi = 300)
+ggsave(paste(figure.dir, "figure-2.png", sep = ""), width = 11, height = 5, dpi = 300)
 
 ```
 
 What are the counts of mutations in each of these three bins (`CBA`: "Candidate Brain Ancestor", `CG1`: "Candidate Genome 1", and `CG2`: "Candidate Genome 2")?
 
-```{r Mutations in Each Genotype}
+```{r Mutations in Each Genotype, echo = F}
+
 # What's the count of SNPs in each category?
 sspe.1.df %>% 
   group_by(Genotype) %>% 
   count() %>% 
   kable(., caption = "Candidate Genotype Variant Counts")
 
-
-sspe.1.df %>% 
-  filter(Genotype == "CG2") %>% 
-  pull(SNP) %>% 
-  unique() %>% 
-  paste(., collapse = ", ")
-
 ```
 
 These observations are what spurred the following approach to formalize a way to phase the mutations in these genotypes using all 15 tissues. 
 
-## Assign Mutations to Major Backgrounds
+## Phase Mutation Clusters
 
-We know from experiments and preliminary observations that there are **at least two sets of mutations present, but not fixed in every tissue sample**. These two sets of mutations are on the background of all viral sequences from this patient. Since these two sets of mutations are in every sample and their frequencies are anti correlated, we should be able to identify these mutations by clustering them based on their co/anti-correlation. 
+We know from experiments and preliminary observations (highlighted above) that there are **at least two sets of mutations present, but not fixed in every tissue sample**. These two sets of mutations are on the background of all viral sequences from this patient. Since these two sets of mutations are in every sample and their frequencies are anti-correlated, we should be able to identify these mutations by clustering them based on their co/anti-correlation. 
 
-```{r Shared Mutations, warning = F, message = F, echo=T}
+```{r Shared Mutations, warning = F, message = F, echo = F}
 
-# All thirteen of the tissue samples 
+# All fifteen of the tissue samples 
 tissues = selected.variants.df %>% 
   pull(Tissue) %>% 
   unique()
@@ -314,13 +327,13 @@ all.mutations = selected.variants.df %>%
   filter(n == length(tissues)) %>%
   pull(SNP)
 
-print(paste("There are", length(all.mutations), "mutations in every tissue sample"))
+print(paste("There are", length(all.mutations), "mutations found in every tissue sample"))
 
 ```
 
 Although the reference seems to capture nearly every fixed mutation, there are four that aren't included in the reference. These are all in one continuous four nucleotide stretch in Nucleoprotein (N). I don't know why these don't get captured in the reference assembly, but it likely has to do with issues with the alignment of these reads. **I'll exclude these from the downstream analysis and add these back into the SSPE reference.** 
 
-```{r Remaining Fixed Mutations, warning=F, message=F, echo=T}
+```{r Remaining Fixed Mutations, warning = F, message = F, echo = T}
 
 # Remove the fixed mutations and get the long form of mutations in all samples. 
 fixed.in.all = selected.variants.df %>% 
@@ -358,9 +371,9 @@ Heatmap(SNP.correlation ,
         show_row_dend = FALSE)
 ```
 
-Most are strongly correlated (or anti correlated), but some aren't so correlated with one another. Below is a histogram showing this more clearly. I'll filter out SNPs that aren't so well correlated with one another to make it easier to cluster the mutations on `Genome-1` and `Genome-2`. 
+Most are strongly correlated (or anti-correlated), but some aren't strongly correlated with one another. Below is a histogram showing this more clearly. I'll filter out SNPs that aren't so well correlated with one another to make it easier to cluster the mutations on `Genome-1` and `Genome-2`. 
 
-```{r Correlation Histogram, echo=T, fig.align='center', fig.width=6, fig.height=4}
+```{r Correlation Histogram, echo=F, fig.align='center', fig.width=6, fig.height=4}
 
 # Get the R-squared from the correlation matrix
 SNP.correlation.squared = SNP.correlation^2
@@ -416,9 +429,10 @@ tissue.mean = kmedoids.SNPs %>%
   summarize(AF = mean(AF))
 
 ```
+
 What's interesting, is that these mutations aren't best explained with 2 clusters (i.e. `Genome-1` and `Genome-2`) but rather with *3 clusters*! 
 
-```{r Plot the clusters, fig.align='center', fig.width=14, fig.height=10}
+```{r Plot the clusters, echo=F, fig.align='center', fig.width=14, fig.height=10}
 
 kmedoids.SNPs %>% 
   ggplot(aes(x = reorder(Tissue, -AF), y = AF)) +
@@ -431,11 +445,9 @@ kmedoids.SNPs %>%
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     theme(legend.position = "none") 
 
-# ggsave("../../results/figures/each-mutation-cluster.png", width = 14, height = 10, dpi = 300)
-
 ```
 
-It's clear from the above plot that mutations grouped in clusters have very similar frequencies across tissues as expected. What's interesting is that clusters 2 and 3 are found at very similar frequencies in every tissue but the `Frontal Cortex 2` sample. It is likely that these are an early divergence of one of the major genotypes.
+It's clear from the above plot that mutations grouped in clusters have very similar frequencies across tissues as expected. What's interesting is that clusters 2 and 3 are found at very similar frequencies in every tissue but the `Frontal Cortex 2` sample. It is likely that this represents an early divergence of one of the major genotypes.
 
 We'll call cluster 3 `Genome-1`, cluster 2 `Genome-1-1`, and cluster 1 `Genome-2`. The 'no cluster' mutations are simply mutations found in every single tissue that don't neatly fit on `Genome-1`,`Genome-2`, or `Genome-1-1`. These will take some more work to resolve.
 
@@ -463,11 +475,12 @@ labeled.df = selected.variants.df %>%
                                SNP %in% g2.SNPs ~ "genome-2",
                                SNP %in% sub.g1.SNPs ~ "genome-1-1",
                                TRUE ~ "subclonal"))
+
 ```
 
-I'll write out the newly annotated variant dataframe for further analyses. 
+I'll write out the newly annotated variant data frame for further analyses. 
 
-```{r Write Out, warning=F, message=F, echo=T}
+```{r Write Out, warning=F, message=F, echo=F}
 
 # Write these out to a file 
 print(paste("Writing the results to", output.path))
@@ -572,14 +585,13 @@ labeled.df %>%
     scale_x_continuous(limits=c(0,16000)) +
     theme(legend.position = "bottom") 
 
-# ggsave("../../results/figures/snps-in-g1-and-g2.png", width = 18, height = 12, dpi = 300)
-
 ```
-Interestingly, only `Genome-1` has mutation in the Matrix protein. This is kind of surprising given how hypermutated the Matrix protein is. 
+
+Interestingly, only `Genome-1` has mutations in the Matrix protein. This is kind of surprising given how hyper-mutated the Matrix protein is. 
 
 Overall, there are more mutation in `Genome-1` than there are in `Genome-2`, but this is mostly driven by this large block of mutations in the Matrix. 
 
-```{r Mutations per genotype}
+```{r Mutations per genotype, echo=F}
 
 # All mutations 
 all.mutations.included = labeled.df %>%
@@ -682,8 +694,6 @@ kmedoids.SNPs %>%
     facet_wrap(~title) + 
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
-
-# ggsave("../../results/figures/snps-in-both.png", width = 8, height = 4, dpi = 300)
 
 ```
 
