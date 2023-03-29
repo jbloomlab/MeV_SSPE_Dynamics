@@ -218,7 +218,7 @@ driver.snps = sspe.1.df %>%
 ```{r Plot Pilot Data, warning=F, echo = F, fig.align = 'center', fig.width = 10, fig.height = 5}
 
 # Plot the pilot data with sample SSPE 1
-ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +
+ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +idh
   geom_point(size = 2) + 
   geom_point(data = subclonal.snps, color = "#878484", size = 1) + 
   geom_point(data = driver.snps, color = "black", size = 3) + 
