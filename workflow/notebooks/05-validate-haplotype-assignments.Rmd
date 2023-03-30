@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to validate and organize the nomenclature for the subclonal haplotypes that were identified and assigned to `Genome 1` or `Genome 2` in the previous notebooks. I'll use the bridging reads over any given pair of SNPs to do this validation along with checking for violations in our assumptions about the sum of allele frequencies in each tissue specimen. **The output of this notebook is a final set of phased variants with cluster/haplotype assignments.**
+The goal of this notebook is take the haplotypes that were identified in the previous notebooks and assigned to `Genome 1` and `Genome 2`, and check for problems like homoplasy or other issues. I'll use bridging reads over pairs of SNPs to look for issues along with checking for violations in our assumptions about the sum of allele frequencies in each tissue specimen. **The output of this notebook is a final set of phased variants with cluster/haplotype assignments.**
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -96,7 +96,7 @@ if (exists("snakemake")) {
 
 ## Current Haplotype Clusters
 
-First, using the previous notebook (`genotype-subclonal-snps.Rmd`), let's assign a putative background lineage (`Genome 1` or `Genome 2`) to each of the major clusters.
+First, using the previous notebook (`04-assign-haplotype-backgrounds.Rmd`), let's assign a putative background lineage (`Genome 1` or `Genome 2`) to each of the major clusters.
 
 ```{r Assign Genotypes, echo=T}
 
@@ -923,6 +923,7 @@ Finally, I'll write out these validated and renamed clusters to a new file.
 ```{r echo=T}
 # Write the validated labeled data
 write_csv(labeled.df, output.path)
+
 ```
 
 
