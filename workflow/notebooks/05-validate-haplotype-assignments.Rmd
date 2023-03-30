@@ -27,7 +27,7 @@ knitr::opts_chunk$set(echo = FALSE)
 ## ==== Install Required Packages ==== ##
 
 ## List of all packages needed
-packages = c("tidyverse", "foreach", "emdbook", "RColorBrewer", "data.table", "ggnetwork", "network")
+packages = c("tidyverse", "foreach", "emdbook", "RColorBrewer", "data.table")
 
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
@@ -40,37 +40,38 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 
 if (exists("snakemake")) {
 
-  # Data from lofreq and varscan labeled with subclonal haplotypes
+  # Phased variants with haplotype annotations assigned to background Genome 1 or Genome 2
   updated.data = snakemake@params[["incsv"]]
   
-  # Data from the count of bridging reads
-  bridging.data = snakemake@input[[1]]
-    
-  # Annotations 
+  # Original unfiltered variant calls
+  variant.data = snakemake@params[["rawvariants"]]
+  
+  # Annotations for MeV genes
   annotations.filepath = snakemake@params[["annotations"]]
+
+  # Counts of all reads bridging *all* pairs of SNP positions
+  bridging.data = snakemake@params[["bridging"]]
   
   # 'Ancestral' mutation included in the reference
   ancestral.data = snakemake@params[['ancestral']]
   
-  # G1 or G2 linkage information for all phased SNPs including disagreements 
-  background.data = snakemake@params[['backgrounds']]
 
 } else {
 
-  # Data from lofreq and varscan labeled with subclonal haplotypes
+  # Phased variants with haplotype annotations assigned to background Genome 1 or Genome 2
   updated.data = "../../results/variants/assigned_variants.csv"
   
-  # Data from the count of bridging reads
-  bridging.data = "../../results/bridging/bridging_reads.csv"
-  
-  # Annotations 
+  # Original unfiltered variant calls
+  variant.data = "../../results/variants/variants.csv"
+    
+  # Annotations for MeV genes
   annotations.filepath = "../../config/annotations.csv"
+ 
+  # Counts of all reads bridging *all* pairs of SNP positions
+  bridging.data = "../../results/bridging/bridging_reads.csv"
   
   # 'Ancestral' mutation included in the reference
   ancestral.data = "../../config/ref/annotated_SSPE_consensus_snps.csv"
-  
-  # G1 or G2 linkage information for all phased SNPs including disagreements 
-  background.data = "../../results/bridging/cluster_snp_backgrounds.csv"
   
 }
 
@@ -82,33 +83,46 @@ if (exists("snakemake")) {
 
 if (exists("snakemake")) {
   
-  # Path to save the polished assigned variants
+  # Path to save the validated variants
   output.path = snakemake@params[["outcsv"]]
+  
+  # Path to save figures
+  figure.dir = snakemake@params[['figures']]
   
 } else {
 
   # Path to save the polished assigned variants
   output.path = "../../results/variants/validated_variants.csv"
+  
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+  
 }
 
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
 
 ```
 
 ## Current Haplotype Clusters
 
-First, using the previous notebook (`04-assign-haplotype-backgrounds.Rmd`), let's assign a putative background lineage (`Genome 1` or `Genome 2`) to each of the major clusters.
+Let's take a look at the re-named and background annotated clusters/haplotypes from the previous notebook `04-assign-haplotype-backgrounds.Rmd`.
 
-```{r Assign Genotypes, echo=T}
+```{r Load in Data, echo=T}
 
 # Read in the variants with G1, G2, and G1-1 labeled
-labeled.df = read_csv(updated.data, show_col_types = FALSE) 
+labeled.df = read_csv(updated.data, show_col_types = FALSE) %>% 
+  mutate(Tissue = case_when(
+    Tissue == "UBS" ~ "Upper Brain Stem",
+    TRUE ~ Tissue
+  ))
 
-```
-
-Now, I'll plot all of the current haplotypes colored by whether they belong to either lineage.
-
-```{r All Polished Haplotypes, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
-
+# Get the haplotype names
 haplotypes.label = labeled.df %>% 
   select(SNP, Haplotype, Background) %>% 
   distinct()
@@ -122,25 +136,12 @@ expanded.df = labeled.df %>%
   mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
   left_join(., haplotypes.label, by = "SNP") 
 
-# Get the mean frequency of the major genomes 
-tissue.mean = labeled.df %>% 
-  filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
-  group_by(Tissue, Haplotype) %>% 
-  summarize(AF.mean = mean(AF, na.rm = TRUE), 
-            SD = sd(AF, na.rm = TRUE),
-            N = n()) %>% 
-  mutate(SE = SD / sqrt(N),
-         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
-         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
-  rename("AF" = AF.mean)
+```
 
-#  Mean frequency in each haplotype
-haplotype.mean = expanded.df %>% 
-  group_by(Tissue, Haplotype) %>% 
-  summarize(AF = mean(AF))
+```{r Plot Unvalidated Clusters, echo=F, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10}
 
 # Tissue order - roughly by the location in the brain 
-tissue_order = c(
+tissue.order = c(
   "SSPE 1", 
   "SSPE 2",
   "Frontal Cortex 2", 
@@ -152,12 +153,13 @@ tissue_order = c(
   "Hippocampus",
   "Internal Capsule", 
   "Midbrain", 
-  "UBS",
+  "Upper Brain Stem",
   "Brain Stem",
   "Cerebellum",
   "Cerebellum Nucleus"
 )
 
+# Haplotype order - sequentialy by frequency
 haplotype.order = c("cluster 1",
                     "cluster 2",
                     "cluster 3",
@@ -170,29 +172,30 @@ haplotype.order = c("cluster 1",
                     "cluster 10",
                     "cluster 11",
                     "cluster 12",
-                    "cluster 13",
-                    "cluster 14", 
-                    "cluster 15",
-                    "cluster 16",
-                    "genome-1-1")
+                    "cluster 13")
 
 expanded.df %>% 
-    filter(!Haplotype %in% c("fixed", "both", "subclonal", "genome-1", "genome-2")) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF, col = (Background))) +
+    filter(Haplotype %in% haplotype.order) %>% 
+    mutate(Genotype = case_when(
+      Background == "genome-1" ~ "G1",
+      Background == "genome-2" ~ "G2"
+    )) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, col = (Genotype))) +
       geom_line(aes(group = SNP)) +
       facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
       scale_color_manual(values=c("#424ef5", "#cf1919")) + 
       xlab("Tissue") + 
       ylab("Allele Frequency") +
-      labs(fill="Genotype", col = "Cluster") +
+      labs(fill = "Genotype", col = "Genotype") +
       theme_bw(20) +
+      theme(strip.text.x = element_text(size = 12)) +
+      theme(axis.title.x=element_blank()) +
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
+      theme(legend.position="bottom")
 
 ```
 
-The main question of this notebook is how well our clustering approach has done at identifying 'true' haplotypes. It's possible that some of these clusters contain mutations that are linked through spurious correlations. The hope is that we can resolve some of this using: 
+The main question of this notebook is how well our clustering approach has done at identifying 'true' haplotypes. It's possible that some of these clusters contain mutations that are linked through spurious correlations. The hope is that we can resolve this using: 
 
 1. Reads that bridge the position of variants within and between clusters. 
 2. The identity of mutations (i.e are they in highly polymorphic genes like Matrix).
@@ -202,10 +205,17 @@ The main question of this notebook is how well our clustering approach has done 
 
 First, I'll use reads that bridge all pairs of positions where there are reads covering both position simultaneously. The question is whether these reads can help confirm the halplotypes identities and tell us whether haplotypes are linked to one another. 
 
-```{r Upload Bridging Reads, echo=T}
+```{r Import Bridging Reads, echo=F}
 # Bridging reads
-bridging.df = read_csv(bridging.data, show_col_types = FALSE)
-head(bridging.df)
+bridging.df = read_csv(bridging.data, show_col_types = FALSE) %>% 
+  mutate(Tissue = case_when(
+      Tissue == "UBS" ~ "Upper Brain Stem",
+      TRUE ~ Tissue
+    ))
+
+head(bridging.df) %>% 
+  kable(., caption = "Bridging SNPs")
+  
 ```
 
 The columns are as follows: `snp_1` is the position in the genome of one SNP, `snp_2` is the position of the second SNP, `00` are reads that overlap both positions but have neither SNP, `10` are reads that have only `snp_1`, `01` are reads that have only `snp_2`, and `11` are reads with both SNPs. 
@@ -290,78 +300,21 @@ rank_bridging_reads = function(cluster.ID, snp.df, tau.df, min.freq = 0.1) {
 
 ```
 
-For all of the clusters plotted above, I'll print every known haplotype (including SNPs in G1 and G2) that is possibly linked to that cluster. As long as a SNP with a known haplotype is linked to the cluster's SNP in more than one tissue where both SNPs are present in greater than 10% of bridging reads, it will get printed below.
-
-```{r Print Linked Matches, echo=T}
-
-clusters = labeled.df %>% 
-  filter(!Haplotype %in% c("genome-1", "genome-2", "both", "fixed", "subclonal")) %>% 
-  pull(Haplotype) %>% 
-  unique()
-
-for (cluster.id in clusters) {
-  
-  linked.matches = rank_bridging_reads(cluster.id, labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
-    filter(linked >= 1) %>% 
-    pull(Haplotype) %>% 
-    unique()
-  
-  print(paste(cluster.id, "is linked to:"))
-  print(paste(linked.matches, collapse=", "))
-  print("----")
-  
-}
-
-```
-
-Most of these conform with our expectations regarding which backgrounds we think each haplotype cluster belongs to. The exceptions are cluster 10, 11, 13, 15, and 6. Let's investigate each of these independently. 
+I'll use this later when cleaning up individual clusters. 
 
 ## Investigate Individual Clusters
 
-I'll go through each cluster that violates our assumptions about which background it's on independently. 
+There are a few haplotypes that have a significant amount of internal variation even though our method clustered all of these SNPs together. I'll go through each of these haplotypes/clusters independently. 
 
-### Cluster 15
+### Cluster 6
 
-Cluster 15 is a *very* low frequency cluster, there is good amount of internal variation, and there are only two SNPs. 
+Cluster 6 appears to be a set of SNPs on the background of `Genome 1` in the Frontal Cortex 2 specimen. However, since these SNPs are only present at appreciable frequency in a single tissue, we can't as clearly link them by their correlation in frequency alone.
 
-```{r Cluster 15, fig.align='center', fig.width=8, fig.height=5, echo=T}
-
-expanded.df %>% 
-    filter(Haplotype %in% c("cluster 15")) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF,)) +
-      geom_line(aes(group = SNP)) +
-      facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
-      scale_color_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Genotype", col = "Cluster") +
-      theme_bw(20) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
-```
-
-I don't know if we can really be that confident in this cluster, so let's remove it. It's only 2 SNPs, so we're not going to lose much information either way.
-
-```{r Remove cluster 15, echo=T}
-
-labeled.df = labeled.df %>% 
-  mutate(Background = case_when(Haplotype == "cluster 15" ~ "subclonal",
-                                TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(Haplotype == "cluster 15" ~ "subclonal",
-                                TRUE ~ Haplotype))
-
-```
-
-### Cluster 10
-
-Cluster 10 appears to be a set of SNPs on the background of genome-1 in the Frontal Cortex 2 specimen. However, since these SNPs are only present at appreciable frequency in a single tissue, we can't as clearly link them by their correlation in frequency alone.
-
-```{r Cluster 10, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Cluster 6, fig.align='center', fig.width=8, fig.height=5, echo=T}
 
 expanded.df %>% 
-    filter(Haplotype %in% c("cluster 10")) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF,)) +
+    filter(Haplotype %in% c("cluster 6")) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF,)) +
       geom_line(aes(group = SNP)) +
       facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
       scale_color_manual(values=c("#424ef5", "#cf1919")) + 
@@ -379,7 +332,7 @@ Another issue with this cluster is that many of the mutations are in the Matrix 
 ```{r Percentage of Matrix SNPs}
 
 labeled.df %>% 
-  filter (Haplotype == "cluster 10") %>% 
+  filter (Haplotype == "cluster 6") %>% 
   select(SNP, Gene) %>% 
   distinct() %>% 
   group_by(Gene) %>% 
@@ -389,15 +342,15 @@ labeled.df %>%
 
 ```
 
-We can see that if we drop only the Matrix mutations from this cluster, the peaks in frequency in tissues where cluster 10 should presumably be missing are mostly gone.
+We can see that if we drop only the Matrix mutations from this cluster, the peaks in frequency in tissues where cluster 6 should presumably be missing are mostly gone.
 
-```{r Cluster 10 Non-matrix, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Cluster 6 Non-matrix, fig.align='center', fig.width=8, fig.height=5, echo=T}
 
 expanded.df %>% 
-    filter(Haplotype %in% c("cluster 10")) %>%
+    filter(Haplotype %in% c("cluster 6")) %>%
     left_join(., distinct(select(labeled.df, SNP, Gene))) %>% 
     filter(Gene != "M") %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF,)) +
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF,)) +
       geom_line(aes(group = SNP)) +
       facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
       scale_color_manual(values=c("#424ef5", "#cf1919")) + 
@@ -413,9 +366,9 @@ expanded.df %>%
 
 One solution to this issue, short of removing all Matrix mutations, is to remove the matrix mutations that are *also* linked to genome-1-1 or genome-2. This makes the correlation much better and is a more principled approach to refining this haplotype.
 
-```{r Exclude Reccurent SNPs from Cluster 10, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Exclude Reccurent SNPs from Cluster 6, fig.align='center', fig.width=8, fig.height=5, echo=T}
 
-exclude.from.cluster.10 = rank_bridging_reads("cluster 10", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
+exclude.from.cluster.6 = rank_bridging_reads("cluster 6", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
   filter(linked >= 1) %>% 
   filter(Haplotype %in% c("genome-1-1", "genome-2")) %>% 
   select(cluster_snp) %>% 
@@ -423,10 +376,10 @@ exclude.from.cluster.10 = rank_bridging_reads("cluster 10", labeled.df, SNPassig
   unique()
 
 expanded.df %>% 
-    filter(Haplotype %in% c("cluster 10")) %>%
+    filter(Haplotype %in% c("cluster 6")) %>%
     left_join(., distinct(select(labeled.df, SNP, Gene, POS))) %>% 
-    filter(!POS %in% exclude.from.cluster.10) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF,)) +
+    filter(!POS %in% exclude.from.cluster.6) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF,)) +
       geom_line(aes(group = SNP)) +
       facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
       scale_color_manual(values=c("#424ef5", "#cf1919")) + 
@@ -437,26 +390,25 @@ expanded.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
-print(paste("Excluding", length(exclude.from.cluster.10), "SNPs from cluster 10."))
+print(paste("Excluding", length(exclude.from.cluster.6), "SNPs from cluster 6"))
 
 labeled.df = labeled.df %>% 
-  mutate(Background = case_when(POS %in% exclude.from.cluster.10 ~ "subclonal",
+  mutate(Background = case_when(POS %in% exclude.from.cluster.6 ~ "subclonal",
                                 TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(POS %in% exclude.from.cluster.10 ~ "subclonal",
+  mutate(Haplotype = case_when(POS %in% exclude.from.cluster.6 ~ "subclonal",
                                 TRUE ~ Haplotype))
 ```
 
-## Cluster 13
+### Cluster 12
 
-Cluster 13 is interesting, because from frequency alone, we know it's not possible that this exists as a single haplotype. This is because we believe that it's linked to genome-1 and therefore descended from cluster 10, yet, it's found at a higher frequency than cluster 10 in the Midbrain. This violates the 'pigeon-hole' principle. This cluster can't simultaneously be one both Cluster 10 and Genome 1-1 (Genome 01b). 
+Now let's see about cluster 12 These are SNPs present in the lower brain where the read depth is pretty low, and the correlation is somewhat loose. 
 
-```{r Cluster 13, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Cluster 12, fig.align='center', fig.width=8, fig.height=5, echo=T}
 
 expanded.df %>% 
-    filter(Haplotype %in% c("cluster 13")) %>%
+    filter(Haplotype %in% c("cluster 12")) %>%
     left_join(., distinct(select(labeled.df, SNP, Gene, POS))) %>% 
-    filter(!POS %in% exclude.from.cluster.10) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF,)) +
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF,)) +
       geom_line(aes(group = SNP)) +
       facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
       scale_color_manual(values=c("#424ef5", "#cf1919")) + 
@@ -466,71 +418,14 @@ expanded.df %>%
       theme_bw(20) +
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
-
-```
-
-This cluster suffers from several probable issues. For one, it's pretty low frequency so error is proportionately large. Second, it's only high frequency in two tissues - the frontal cortex and mid brain - so the correlation could be spurious Finally, it's only Matrix mutations, so the likelihood that they're recurrent is high. 
-
-```{r Percentage of Matrix SNPs C13, echo=F}
-
-labeled.df %>% 
-  filter (Haplotype == "cluster 13") %>% 
-  select(SNP, Gene) %>% 
-  distinct() %>% 
-  group_by(Gene) %>% 
-  count() %>% 
-  arrange(-n)
-
-```
-
-This is likely two or more haplotypes, and unsurprisingly, all found are linked to both genome-1-1 and cluster 10. This suggests that these are recurrent SNPs and shouldn't be considered a haplotype. 
-
-```{r Remove Cluster 13, echo=T}
-
-rank_bridging_reads("cluster 13", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
-  filter(linked >= 1) %>% 
-  filter(Haplotype %in% c("genome-1-1")) %>% 
-  select(cluster_snp) %>% 
-  pull() %>% 
-  unique()
-
-labeled.df = labeled.df %>% 
-  mutate(Background = case_when(Haplotype == "cluster 13" ~ "subclonal",
-                                TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when(Haplotype == "cluster 13" ~ "subclonal",
-                                TRUE ~ Haplotype))
-
-```
-
-### Cluster 11
-
-Now let's see about cluster 11. These are SNPs present in the lower brain where the read depth is pretty low, and the correlation is somewhat loose. 
-
-```{r Cluster 11, fig.align='center', fig.width=8, fig.height=5, echo=T}
-
-expanded.df %>% 
-    filter(Haplotype %in% c("cluster 11")) %>%
-    left_join(., distinct(select(labeled.df, SNP, Gene, POS))) %>% 
-    filter(!POS %in% exclude.from.cluster.10) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF,)) +
-      geom_line(aes(group = SNP)) +
-      facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
-      scale_color_manual(values=c("#424ef5", "#cf1919")) + 
-      xlab("Tissue") + 
-      ylab("Allele Frequency") +
-      labs(fill="Genotype", col = "Cluster") +
-      theme_bw(20) +
-      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-      theme(strip.text.x = element_text(size = 12))
-
 ```
 
 This cluster is half matrix mutations and half non-matrix mutations
 
-```{r Percentage of Matrix SNPs C11, echo=F}
+```{r Percentage of Matrix SNPs Cluster 12, echo=F}
 
 labeled.df %>% 
-  filter (Haplotype == "cluster 11") %>% 
+  filter (Haplotype == "cluster 12") %>% 
   select(SNP, Gene) %>%
   distinct() %>% 
   group_by(Gene) %>% 
@@ -539,51 +434,51 @@ labeled.df %>%
 
 ```
 
-Below, I'll clean up cluster 11 by removing SNPs that are linked to genome-1 (since cluster 11 is a genome-2 cluster) and removing Matrix mutations unless they're linked to other cluster 11 mutations or genome-2. Finally, there is a very low depth F mutation that visibly looks like an outlier. I'll remove this as well.
+Below, I'll clean up cluster 12 by removing SNPs that are linked to genome-1 (since cluster 12 is a genome-2 cluster) and removing Matrix mutations unless they're linked to other cluster 12 mutations or genome-2. Finally, there is a very low depth F mutation that visibly looks like an outlier. I'll remove this as well.
 
-```{r Clean Up Cluster 11, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Clean Up Cluster 12, fig.align='center', fig.width=8, fig.height=5, echo=T}
 
-linked.to.cluster11 = rank_bridging_reads("cluster 11", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
+linked.to.cluster.12 = rank_bridging_reads("cluster 12", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
   filter(linked >= 1) %>% 
-  filter(Haplotype %in% c("cluster 11", "genome-2")) %>% 
+  filter(Haplotype %in% c("cluster 12", "genome-2")) %>% 
   select(cluster_snp) %>% 
   pull() %>% 
   unique()
 
-unlinked.from.cluster.11 = rank_bridging_reads("cluster 11", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
+unlinked.from.cluster.12 = rank_bridging_reads("cluster 12", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
   filter(linked >= 1) %>% 
   filter(Haplotype %in% c("genome-1-1", "genome-1")) %>% 
   select(cluster_snp) %>% 
   pull() %>% 
   unique()
 
-keep.in.cluster.11 = linked.to.cluster11[which(!linked.to.cluster11 %in% unlinked.from.cluster.11)]
+keep.in.cluster.12 = linked.to.cluster.12[which(!linked.to.cluster.12 %in% unlinked.from.cluster.12)]
 
-non.matrix.cluster.11 = labeled.df %>% 
-  filter(Haplotype == "cluster 11") %>% 
+non.matrix.cluster.12 = labeled.df %>% 
+  filter(Haplotype == "cluster 12") %>% 
   filter(Gene != "M") %>% 
   pull(POS) %>% 
   unique()
 
-keep.in.cluster.11 = c(keep.in.cluster.11, non.matrix.cluster.11)
+keep.in.cluster.12 = c(keep.in.cluster.12, non.matrix.cluster.12)
 
 low.depth.outlier = 4923
 
-keep.in.cluster.11 = keep.in.cluster.11[which(!keep.in.cluster.11 %in% low.depth.outlier)]
+keep.in.cluster.12 = keep.in.cluster.12[which(!keep.in.cluster.12 %in% low.depth.outlier)]
 
-cluster.11.snps = labeled.df %>% 
-  filter(Haplotype %in% c("cluster 11")) %>%
+cluster.12.snps = labeled.df %>% 
+  filter(Haplotype %in% c("cluster 12")) %>%
   pull(POS) %>% 
   unique()  
 
-exclude.from.cluster.11 = cluster.11.snps[which(!cluster.11.snps %in% keep.in.cluster.11)]
+exclude.from.cluster.12 = cluster.12.snps[which(!cluster.12.snps %in% keep.in.cluster.12)]
 
 
 expanded.df %>% 
-    filter(Haplotype %in% c("cluster 11")) %>%
+    filter(Haplotype %in% c("cluster 12")) %>%
     left_join(., distinct(select(labeled.df, SNP, Gene, POS))) %>% 
-    filter((!POS %in% exclude.from.cluster.11)) %>% 
-    ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF,)) +
+    filter((!POS %in% exclude.from.cluster.12)) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF,)) +
       geom_line(aes(group = SNP)) +
       facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
       scale_color_manual(values=c("#424ef5", "#cf1919")) + 
@@ -596,78 +491,70 @@ expanded.df %>%
 
 
 labeled.df = labeled.df %>% 
-  mutate(Background = case_when((POS %in% exclude.from.cluster.11) ~ "subclonal",
+  mutate(Background = case_when((POS %in% exclude.from.cluster.12) ~ "subclonal",
                                 TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when((POS %in% exclude.from.cluster.11) ~ "subclonal",
+  mutate(Haplotype = case_when((POS %in% exclude.from.cluster.12) ~ "subclonal",
                                 TRUE ~ Haplotype))
 
 ```
 
+### Cluster 2 
 
-### Cluster 2 and Cluster 9 
+Finally, Cluster 2 contains a set of mutations that are missing from the Cerebellum due to coverage. These appear as a dip in the mean Cluster 2 frequency. Let's amend this using the original variant calls. 
 
-Finally, Cluster 2 and Cluster 9 are the same cluster but Cerebellum has very low depth. The SNPs in cluster 2 are present in Cerebellum at a similar frequency to cluster 9, but they fail the depth filters. Below, I'll amend that by setting the frequency to the mean frequency of cluster 9 and merging them.
+```{r Missing Cluster 2 SNPs, echo=T}
 
-```{r Merge Cluster 2 into 9, echo=T}
+# Get the raw original variants not filtered on depth
+variant.df = read_csv(variant.data, show_col_types = F)
 
-c9.mean.cerebellum.freq = labeled.df %>% 
-  filter(Haplotype == "cluster 9" & Tissue == "Cerebellum") %>% 
-  pull(AF) %>% 
-  mean()
-
-cluster.2.cerebellum.dummy.alleles = labeled.df %>% 
+all.c2.snps = labeled.df %>%
   filter(Haplotype == "cluster 2") %>% 
-  filter(Tissue == "Cerebellum Nucleus") %>% 
-  mutate(AF = c9.mean.cerebellum.freq, 
-         Tissue = "Cerebellum", 
-         Accession = "Cerebellum",
-         DP = 100)
+  pull(SNP) %>%
+  unique()
 
+cerebellum.c2.snps = labeled.df %>%
+  filter(Haplotype == "cluster 2" & Tissue == "Cerebellum") %>% 
+  pull(SNP) %>%
+  unique()
 
-labeled.df = rbind(labeled.df, cluster.2.cerebellum.dummy.alleles) %>% 
-  mutate(Haplotype = case_when(
-    Haplotype == "cluster 2" ~ "cluster 9",
-    TRUE ~ Haplotype)) 
+# These SNPS are not found in the Cerebellum, likely due to depth
+missing.cerebellum.c2.snps = all.c2.snps[!(all.c2.snps %in% cerebellum.c2.snps)]
 
-
-```
-
-Okay, so what do the clusters look like now after cleaning them up using the bridging reads? Before I proceed, I'll rename clusters sequentially according to whether they belong to the `Genome 1` or `Genome 2` lineage. 
-
-```{r Cattaneo Nameing Scheme, echo=T}
-
-
-labeled.df = labeled.df %>% 
-  mutate(Haplotype_Name = case_when(
-    Haplotype == "cluster 1" ~ "cluster 1",
-    Haplotype == "cluster 3" ~ "cluster 2",
-    Haplotype == "cluster 4" ~ "cluster 3",
-    Haplotype == "cluster 8" ~ "cluster 4",
-    Haplotype == "cluster 9" ~ "cluster 5",
-    Haplotype == "cluster 10" ~ "cluster 6",
-    Haplotype == "cluster 12" ~ "cluster 7",
-    Haplotype == "cluster 14" ~ "cluster 8",
-    Haplotype == "cluster 5" ~ "cluster 9",
-    Haplotype == "cluster 6" ~ "cluster 10",
-    Haplotype == "cluster 7" ~ "cluster 11",
-    Haplotype == "cluster 11" ~ "cluster 12",
-    Haplotype == "cluster 16" ~ "cluster 13",
-    Haplotype == "cluster 14" ~ "cluster 14",
-    Haplotype == "genome-1-1" ~ "genome 1",
-    Haplotype == "genome-1" ~ "genome 01",
-    Haplotype == "genome-2" ~ "genome 2",
-    TRUE ~ Haplotype)) 
-
+# Are they actually missing? 
+variant.df %>% 
+  mutate(SNP = paste0(REF, POS, ALT)) %>% 
+  filter(SNP %in% missing.cerebellum.c2.snps & Tissue == "Cerebellum") %>% 
+  select(SNP, AF, DP, Tissue, Caller) %>% 
+  kable(., caption = "Missing SNPS")
 
 ```
 
-What do these validated clusters look like? 
+These SNPs aren't missing, they are just low depth and were filtered out due to this. 
 
-```{r Ext Figure 4, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
+```{r Amend Cluster 2, echo = T}
+
+# Get the SNPs from the original data frame
+cluster.2.snps = variant.df %>%
+  mutate(SNP = paste0(REF, POS, ALT)) %>% 
+  filter(SNP %in% missing.cerebellum.c2.snps & Tissue == "Cerebellum" & Caller == "lofreq") %>% 
+  select(!c(Caller, Virus, Host, R1, R2, Sample)) %>% 
+  mutate(Cluster = "cluster 2",
+         Background = "genome-1",
+         Haplotype = "cluster 2", 
+         Gene = Gene_Name)
+  
+# Add them back to the data
+labeled.df = rbind(labeled.df, cluster.2.snps)
+
+```
+
+What do these finalized clusters look like? 
+
+```{r Ext Figure 4, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=F}
 
 # Get the haplotype names
 haplotypes.label = labeled.df %>% 
-  select(SNP, Haplotype, Haplotype_Name, Background) %>% 
+  select(SNP, Haplotype, Background) %>% 
   distinct()
 
 # Expand the mutations to have a frequency for every tissue.
@@ -679,53 +566,15 @@ expanded.df = labeled.df %>%
   mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
   left_join(., haplotypes.label, by = "SNP") 
 
-# Tissue order - roughly by the location in the brain 
-expanded_tissue_order = c(
-  "SSPE 1", 
-  "SSPE 2",
-  "Frontal Cortex 2", 
-  "Frontal Cortex 1", 
-  "Frontal Cortex 3", 
-  "Parietal Lobe",
-  "Temporal Lobe", 
-  "Occipital Lobe",
-  "Hippocampus",
-  "Internal Capsule", 
-  "Midbrain", 
-  "Upper Brain Stem",
-  "Brain Stem",
-  "Cerebellum",
-  "Cerebellum Nucleus"
-)
-
-haplotype.order = c("cluster 1",
-                    "cluster 2",
-                    "cluster 3",
-                    "cluster 4",
-                    "cluster 5",
-                    "cluster 6",
-                    "cluster 7",
-                    "cluster 8",
-                    "cluster 9",
-                    "cluster 10",
-                    "cluster 11",
-                    "cluster 12",
-                    "cluster 13",
-                    "cluster 14")
-
 expanded.df %>% 
     filter(!Haplotype %in% c("fixed", "both", "subclonal", "genome-1", "genome-2", "genome-1-1")) %>% 
-    mutate(Tissue = case_when(
-      Tissue == "UBS" ~ "Upper Brain Stem",
-      TRUE ~ Tissue
-    )) %>% 
     mutate(Genotype = case_when(
       Background == "genome-1" ~ "G1",
       Background == "genome-2" ~ "G2"
     )) %>% 
-    ggplot(aes(x = factor(Tissue, levels = expanded_tissue_order), y = AF, col = (Genotype))) +
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, col = (Genotype))) +
       geom_line(aes(group = SNP)) +
-      facet_wrap(~factor(Haplotype_Name, levels = haplotype.order)) + 
+      facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
       scale_color_manual(values=c("#424ef5", "#cf1919")) + 
       xlab("Tissue") + 
       ylab("Allele Frequency") +
@@ -736,13 +585,9 @@ expanded.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(legend.position="bottom")
 
-ggsave("./ext-figure-4.png", width = 19, height = 10)
+ggsave(paste(figure.dir, "extended-data-figure-4.png", sep=""), width = 19, height = 10)
 
 ```
-
-## Mutation Distribution 
-
-Now that we have all of these haplotypes, we can see how these mutations are distributed throughout the MeV genome.
 
 ## Mutation distribution
 
@@ -785,10 +630,7 @@ figure.haplotype.order = c("SSPE Ancestor",
                             "cluster 10",
                             "cluster 11",
                             "cluster 12",
-                            "cluster 13",
-                            "cluster 14", 
-                            "cluster 15",
-                            "cluster 16")
+                            "cluster 13")
 
 
 # Load in the 'ancestral' SNPs that are included in the consensus patient-specific reference
@@ -810,7 +652,7 @@ ancestral.snps = read_csv(ancestral.data) %>%
 # Genome-1 SNPS
 g1.snps = labeled.df %>% 
   filter(Haplotype %in% c("genome-1", "genome-1-1")) %>% 
-  select(Background, Haplotype = Haplotype_Name, Gene, Effect, POS, REF, ALT) %>% 
+  select(Background, Haplotype, Gene, Effect, POS, REF, ALT) %>% 
   mutate(Gene = if_else(Gene == "P/V/C", "P", Gene)) %>% 
   mutate(Effect = if_else(is.na(Effect), "Synonymous", Effect)) %>% 
   mutate(ADAR = case_when(
@@ -819,15 +661,15 @@ g1.snps = labeled.df %>%
     TRUE ~ FALSE
   )) %>%  
   mutate(Haplotype = case_when(
-    Haplotype == "genome 01" ~ "genome 1",
-    Haplotype == "genome 1" ~ "genome 1",
+    Haplotype == "genome-1" ~ "genome 1",
+    Haplotype == "genome-1-1" ~ "genome 1",
     TRUE ~ Haplotype
   )) %>% 
   distinct() 
 
 # Prepare the data for plotting
 distribution.df = labeled.df %>% 
-  select(Background, Haplotype = Haplotype_Name, Gene, Effect, POS, REF, ALT) %>% 
+  select(Background, Haplotype, Gene, Effect, POS, REF, ALT) %>% 
   mutate(Gene = if_else(Gene == "P/V/C", "P", Gene)) %>% 
   mutate(Effect = if_else(is.na(Effect), "Synonymous", Effect)) %>% 
   mutate(ADAR = case_when(
@@ -836,8 +678,9 @@ distribution.df = labeled.df %>%
     TRUE ~ FALSE
   )) %>%  
   mutate(Haplotype = case_when(
-    Haplotype == "genome 01" ~ "genome 01a",
-    Haplotype == "genome 1" ~ "genome 01b",
+    Haplotype == "genome-1" ~ "genome 01a",
+    Haplotype == "genome-1-1" ~ "genome 01b",
+    Haplotype == "genome-2" ~ "genome 2",
     TRUE ~ Haplotype
   )) %>% 
   distinct()  %>% 
@@ -921,9 +764,10 @@ ggsave("./figure-5a.png", width = 15, height = 10, dpi = 300)
 Finally, I'll write out these validated and renamed clusters to a new file. 
 
 ```{r echo=T}
+
 # Write the validated labeled data
+print(paste("Writing out the variants to", output.path))
 write_csv(labeled.df, output.path)
 
 ```
-
 
