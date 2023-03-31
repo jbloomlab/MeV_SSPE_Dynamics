@@ -15,8 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-
-The goal of this notebook is to visualize the phylogenetic relationship of the haplotypes identified in the previous notebooks. I'll read in the tree's from `SPRUCE` as implemented by `MACHINA` and make a nicely formatted tree where branch length corresponds to mutations. 
+The goal of this notebook is to visualize the phylogenetic relationship of the haplotypes identified in the previous notebooks. 
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -43,6 +42,7 @@ if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
   updated.data = snakemake@input[["1"]]
+  
   # Phylogeny 
   phylo.data =  snakemake@input[["2"]]
 
@@ -50,6 +50,7 @@ if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
   updated.data = "../../results/variants/validated_variants.csv"
+  
   # Phylogeny 
   phylo.data = "../../results/phylogeny/haplotype-sequences.fa.treefile"
 
@@ -57,20 +58,27 @@ if (exists("snakemake")) {
 
 ```
 
-## Visualize with IQ-TREE
+## Visualize IQ-TREE Phylogeny
 
-I took the sequences for each of these haplotypes and generated a phylogenetic tree using `iqtree`. The phylogenetic relationship of the clusters was determined by `SPRUCE` with the total set of trees filtered down by bridging reads.
+I took the sequences for each of these haplotypes and generated a phylogenetic tree using `iqtree`. The phylogenetic relationship of the clusters was determined by `SPRUCE` with the total set of trees filtered down by bridging reads. The `iqtree` analysis is done in notebook `09-make-phylogenetic-tree.ipynb`.
 
-```{r Import Data, echo=T}
+```{r Import Data, echo=F}
 
 # Assigned SNPs with haplotype labels 
-updated.df = read_csv(updated.data, show_col_types = FALSE)
+updated.df = read_csv(updated.data, show_col_types = FALSE) %>% 
+  # For consistency, change the names of G1, G2, and G-1-1
+  mutate(Haplotype = case_when(
+    Haplotype == "genome-1" ~ "genome 01",
+    Haplotype == "genome-1-1" ~ "genome 1",
+    Haplotype == "genome-2" ~ "genome 2",
+    T ~ Haplotype
+  )) 
 
 # Get the background of the haplotypes
 background.label = updated.df %>% 
-  select(Haplotype_Name, Background) %>% 
-  filter(!Haplotype_Name %in% c("subclonal", "genome 2", "genome 01", "genome 1", "both")) %>% 
-  mutate(Haplotype_Name = str_replace(Haplotype_Name, " ", "_")) %>% 
+  select(Haplotype, Background) %>% 
+  filter(!Haplotype %in% c("subclonal", "genome 2", "genome 01", "genome 1", "both")) %>% 
+  mutate(Haplotype = str_replace(Haplotype, " ", "_")) %>% 
   distinct()
 
 # Phylogenetic tree 
@@ -81,25 +89,17 @@ tree = read.iqtree(phylo.data)
 ```{r Root the Tree, echo=T}
 
 # Name of the out group for rooting the tree
-root = "sspe_ancestor"
+root = "SSPE_ancestor"
 
 # Root the tree
 tree@phylo = root(tree@phylo, outgroup = root)
 
-```
-
-```{r Add data to the tree, echo=T}
-
 # Add the background labels
-tree.df = left_join(as_tibble(tree), background.label, by=c("label" = "Haplotype_Name")) 
-
-```
-
-```{r Label Backgrounds, echo=T}
+tree.df = left_join(as_tibble(tree), background.label, by=c("label" = "Haplotype")) 
 
 # Get the nodes in the tree
-genome.1.node = MRCA(tree, filter(background.label, Background == "genome-1")$Haplotype_Name)
-genome.2.node = MRCA(tree, filter(background.label, Background == "genome-2")$Haplotype_Name)
+genome.1.node = MRCA(tree, filter(background.label, Background == "genome-1")$Haplotype)
+genome.2.node = MRCA(tree, filter(background.label, Background == "genome-2")$Haplotype)
 genome.1.offspring = offspring(tree, genome.1.node)
 genome.2.offspring = offspring(tree, genome.2.node)
 
@@ -109,14 +109,13 @@ tree.df = as_tibble(tree) %>%
   mutate(Background = case_when(node %in% genome.1.offspring ~ "genome-1",
                                 node %in% genome.2.offspring ~ "genome-2",
                                 TRUE ~ "ancestral")) %>% 
-  mutate(label = str_replace(label, "_", " ")) %>% 
-  mutate(label = if_else(label == "sspe ancestor", "SSPE ancestor", label))
+  mutate(label = str_replace(label, "_", " ")) 
 
 ```
 
 ```{r Plot the Tree, fig.align="center", fig.width=32, fig.height=15}
 
-tree.plt = tree.df %>% 
+tree.df %>% 
   as.treedata() %>% 
   ggtree(size = 3, aes(color = Background)) +
     geom_point2(aes(subset=(node==1)), size=12, color="#4d4d4d") + 
@@ -127,7 +126,7 @@ tree.plt = tree.df %>%
     scale_color_manual(values = c("#4d4d4d", "#307EC2", "#B63F3E")) + 
     theme(legend.position = "none") 
 
-ggsave("../../results/phylogeny/sspe-phylogeny.png", width = 32, height = 15, dpi = 300)
+# ggsave("../../results/phylogeny/sspe-phylogeny.png", width = 32, height = 15, dpi = 300)
 
 ```
 

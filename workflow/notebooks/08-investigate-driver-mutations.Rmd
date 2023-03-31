@@ -41,7 +41,7 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
-  updated.data = "../../results/variants/polished_variants.csv"
+  updated.data = "../../results/variants/validated_variants.csv"
   
   # Data from the count of bridging reads
   bridging.data = "../../results/bridging/bridging_reads.csv"
@@ -55,7 +55,7 @@ if (exists("snakemake")) {
 } else {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
-  updated.data = "../../results/variants/polished_variants.csv"
+  updated.data = "../../results/variants/validated_variants.csv"
   
   # Data from the count of bridging reads
   bridging.data = "../../results/bridging/bridging_reads.csv"
@@ -87,7 +87,7 @@ driver.df = read_csv(driver.mutations, show_col_types = FALSE)  %>%
 
 labeled.df %>%
   filter(SNP %in% driver.df$SNP) %>%
-  select(SNP, AA_Change, Gene, Haplotype_Name) %>%
+  select(SNP, AA_Change, Gene, Haplotype) %>%
   distinct() %>% 
   kable(., caption = "Non-ancestral 'Drivers'")
 
@@ -100,12 +100,12 @@ Of these 9 drivers, we're able to haplotype 3 of them, however, the remaining 6 
 # Get the unassigned driver mutations
 unassigned.drivers = labeled.df %>%
   filter(SNP %in% driver.df$SNP) %>%
-  filter(Haplotype_Name %in% c("subclonal", "both")) %>% 
+  filter(Haplotype %in% c("subclonal", "both")) %>% 
   pull(SNP)
 
 # Get the Haplotypes and Backgrounds for every SNP
 haplotypes.label = labeled.df %>% 
-  select(SNP, Haplotype_Name, Haplotype, Background) %>% 
+  select(SNP, Haplotype, Haplotype, Background) %>% 
   distinct()
 
 # Expand the mutations to have a frequency for every tissue.
@@ -119,8 +119,8 @@ expanded.df = labeled.df %>%
 
 # Get the mean frequency of the major genomes 
 tissue.mean = labeled.df %>% 
-  filter(Haplotype_Name %in% c("genome 01", "genome 2")) %>% 
-  group_by(Tissue, Haplotype_Name) %>% 
+  filter(Haplotype %in% c("genome 01", "genome 2")) %>% 
+  group_by(Tissue, Haplotype) %>% 
   summarize(AF.mean = mean(AF, na.rm = TRUE), 
             SD = sd(AF, na.rm = TRUE),
             N = n()) %>% 
@@ -152,7 +152,7 @@ expanded.df %>%
     filter(SNP %in% unassigned.drivers) %>% 
     ggplot(aes(x = factor(Tissue, levels = tissue_order), y = AF)) +
       geom_line(aes(group = SNP)) +
-      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype_Name, fill = Haplotype_Name), alpha=0.2, colour = NA) +
+      geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue_order), ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=0.2, colour = NA) +
       facet_wrap(~SNP) + 
       scale_fill_manual(values=c("#424ef5", "#cf1919")) + 
       xlab("Tissue") + 
@@ -291,11 +291,12 @@ excluded.snps = unique(excluded.snps[which(excluded.snps != "6775")])
 labeled.df %>% 
   filter(POS %in% excluded.snps) %>% 
   filter(Tissue %in% tissues.to.filter) %>% 
-  select(SNP, AA_Change, Gene, AF, Tissue, Haplotype_Name, Background, Proposed_Background) %>% 
+  select(SNP, AA_Change, Gene, AF, Tissue, Haplotype, Background) %>% 
   kable(., caption = "G6775A Excluded SNPs")
 
 
 ```
+
 Other than being excluded from cluster 13, it's not super clear how to fit this mutation onto the phylogeny yet. 
 
 

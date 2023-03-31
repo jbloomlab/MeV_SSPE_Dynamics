@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to establish a method to genotype SNPs as either belonging to `Genome 1` or to `Genome 2`. **The output of this notebook is a set of phased variants with genome 1 and genome 2 background assignments renamed so that haplotypes are in sequential order.**
+The goal of this notebook is to establish a method to genotype SNPs as either belonging to `Genome 1` or to `Genome 2`. We'll test two different approaches that make use of reads that 'bridge' between haplotype/cluster SNPs and SNPs in `Genome-1` and `Genome-2`.  **The output of this notebook is a set of phased variants with `Genome 1` and `Genome 2` assignments renamed so that haplotypes are in sequential order.**
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -39,24 +39,33 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 ## ==== File paths input data ==== ##
 
 if (exists("snakemake")) {
-  # Data from lofreq and varscan labeled with subclonal haplotypes
+  
+  # Phased variants with haplotype annotations
   updated.data = snakemake@params[["incsv"]]
+  
   # Annotations for MeV genes
   annotations.filepath = snakemake@params[["annotations"]]
+  
   # Counts of SNPs on reads belonging to genome-1 or genome-2
   g1.g2.reads.data = snakemake@input[[1]]
-  # Counts of all reads bridging pairs of SNP positions
+  
+  # Counts of all reads bridging *all* pairs of SNP positions
   bridging.reads.data = snakemake@input[[2]]
 
 } else {
-  # Data from lofreq and varscan labeled with subclonal haplotypes
+  
+  # Phased variants with haplotype annotations
   updated.data = "../../results/variants/clustered_variants.csv"
+  
   # Annotations for MeV genes
   annotations.filepath = "../../config/annotations.csv"
+  
   # Counts of SNPs on reads belonging to genome-1 or genome-2
   g1.g2.reads.data = "../../results/bridging/genotyped.csv"
-  # Counts of all reads bridging pairs of SNP positions
+  
+  # Counts of all reads bridging *all* pairs of SNP positions
   bridging.reads.data = "../../results/bridging/bridging_reads.csv"
+  
 }
 
 ```
@@ -67,19 +76,34 @@ if (exists("snakemake")) {
 
 # Path to save the results
 if (exists("snakemake")) {
-  assigned.output.path = snakemake@params[["assigned"]]
-  assigned.output.path = snakemake@params[["backgrounds"]]
-} else {
+  
   # G1 and G2 assigned variants
-  assigned.output.path = "../../results/variants/assigned_variants.csv"
-  # Assignments for each cluster SNP 
-  background.output.path = "../../results/bridging/cluster_snp_backgrounds.csv"
+  output.path = snakemake@params[['outcsv']]
 
+  # Path to save figures
+  figure.dir = snakemake@params[['figures']]
+  
+} else {
+  
+  # G1 and G2 assigned variants
+  output.path = "../../results/variants/assigned_variants.csv"
+
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+  
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
 }
 
 ```
 
-```{r Import and Format Data, message=F, echo = T}
+```{r Import and Format Data, message=F, echo=F}
 
 # Import the SNPs that were phased in the previous notebook 
 updated.df = read_csv(updated.data, show_col_types = FALSE)
@@ -123,7 +147,7 @@ bridging.df = read_csv(bridging.reads.data, show_col_types = FALSE)
 
 ## CliqueSNV Approach 
 
-This approach resembles is derived from a part of the [`CliqueSNV`](https://academic.oup.com/nar/article/49/17/e102/6313236) algorithm. It's used to determine if SNPs are linked or forbidden from counts of reads overlapping both SNPs. This is one of two approaches that we'll use to assign the haplotypes to `Genome 1` or `Genome 2`. 
+This approach is derived from a part of the [`CliqueSNV`](https://academic.oup.com/nar/article/49/17/e102/6313236) algorithm. It's used to determine if SNPs are linked or forbidden from counts of reads overlapping both SNPs. This is one of two approaches that we'll use to assign the haplotypes to `Genome 1` or `Genome 2`. 
 
 ```{r Assign Genotypes for each Tau, echo=T}
 
@@ -159,12 +183,11 @@ assignmentsByTau = foreach(tau = taus, .combine = "rbind")%do%{
 
 }
 
-
 ```
 
-What are the `genome1/2` assignments for each identified haplotype for every value of `tau` between `0.00001` and `1`? 
+What are the `Genome 1` and `Genome 2` assignments for each haplotype/cluster for every value of `tau` between `0.00001` and `1`? 
 
-```{r Assignments for all Haplotypes, warning=F, message=F, fig.align='center', fig.width=18, fig.height=14}
+```{r Assignments for all Haplotypes, warning=F, message=F, echo=F, fig.align='center', fig.width=18, fig.height=14}
 
 assignment.order = c('G1', 'G2', 'G1/G2', '-')
 assignment.colors = c("#307EC2", "#B63F3E", "purple", "darkgrey")
@@ -198,130 +221,11 @@ assignmentsByTau %>%
 
 ```
 
-How does this look for subclonal SNPs? Can we assign most to either `genome-1` or `genome-2`? 
-
-```{r Annotations, message=FALSE, warning=FALSE}
-
-# Import genome annotations
-annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
-
-# Get the interval positions for these genes 
-N = annotations.df %>% dplyr::filter(Locus == "N")
-P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
-M = annotations.df %>% dplyr::filter(Locus == "M")
-F. = annotations.df %>% dplyr::filter(Locus == "F")
-H = annotations.df %>% dplyr::filter(Locus == "H")
-L = annotations.df %>% dplyr::filter(Locus == "L")
-
-```
-
-```{r Subclonal Assignments, warning=F, message=F, echo = T}
-
-subclonal.assignments = assignmentsByTau %>%
-  filter(Haplotype == "subclonal") %>%
-  select(-Tissue) %>% 
-  unique() %>%
-  group_by(G1orG2, SNP, tau) %>%
-  summarize(n = n()) %>% 
-  spread(G1orG2, n) %>% 
-  gather(type, count, -SNP, -tau) %>% 
-  mutate(count = ifelse(is.na(count), 0, count)) %>%
-  spread(type, count) %>% 
-  gather(type, count, -SNP, -tau) %>% group_by(SNP, tau) %>%
-  mutate(total = sum(count)) %>% 
-  mutate(prop = count/total) %>%
-  group_by(SNP) %>%
-  filter(type == "G1" | type == "G2") %>% 
-  filter(prop > 0) %>%
-  select(SNP, type) %>% 
-  unique()
-
-```
-
-There isn't much of a difference between the assignment of SNPs to `genome-1` or `genome-2` across the MeV genome. 
-
-```{r Subclonal Assignments Positions, warning=F, message=F, fig.align='center', fig.width=10, fig.height=8}
-
-# Import genome annotations
-annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
-
-# Get the interval positions for these genes 
-N = annotations.df %>% dplyr::filter(Locus == "N")
-P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
-M = annotations.df %>% dplyr::filter(Locus == "M")
-F. = annotations.df %>% dplyr::filter(Locus == "F")
-H = annotations.df %>% dplyr::filter(Locus == "H")
-L = annotations.df %>% dplyr::filter(Locus == "L")
-
-left_join(subclonal.assignments, genotyping.df) %>%
-  select(SNP, type, POS) %>%
-  unique() %>% 
-  ggplot(aes(x = POS, y = type, col = type)) +
-    geom_point(pch = "|", size = 3) +
-    labs(x = "Position", y = "Genome")+
-    scale_color_manual(values = assignment.colors, name = "Genome Assignment") +
-  
-    # == Annotations of genes == #
-  
-    # Nucleoprotein
-    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .1 ,
-               alpha = .2, fill = "dodgerblue2", col = "black", size = .1) +
-    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .05, label = "N", size = 8) +
-    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = 2.5 ,
-                   alpha = .1, fill = "dodgerblue2", size = .1) +  
-    # P/V/C
-    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .1 ,
-               alpha = .2, fill = "yellow3", col = "black", size = .1) +
-    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .05, label = "P/V/C", size = 8) +
-    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 2.5 ,
-               alpha = .1, fill = "yellow3", size = .1) +
-    # Matrix protein
-    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .1 ,
-               alpha = .2, fill = "#FF7F00", col = "black", size = .1) +
-    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .05, label = "M", size = 8)  +
-    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 2.5 ,
-               alpha = .1, fill = "#FF7F00", size = .1) +
-    # Fusion protein
-    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .1 ,
-               alpha = .2, fill = "#6A3D9A", col = "black", size = .1) +
-    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .05, label = "F", size = 8) +
-    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 2.5 ,
-               alpha = .1, fill = "#6A3D9A", size = .1) +
-    # Hemagluttinin
-    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .1 ,
-               alpha = .2, fill = "green4", col = "black", size = .1) +
-    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .05, label = "H", size = 8) +
-    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 2.5,
-               alpha = .1, fill = "green4", size = .1) +
-    # Large protein
-    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .1 ,
-               alpha = .2, fill = "#E31A1C", col = "black", size = .1) +
-    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .05, label = "L", size = 8) +
-    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 2.5 ,
-               alpha = .1, fill = "#E31A1C", size = .1) +
-    theme_classic() +
-    theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
-    theme(legend.position="bottom", legend.box = "horizontal") +
-    theme(legend.box.background = element_rect(colour = "black")) +
-    theme(text=element_text(size=24)) + 
-    theme(axis.text.x = element_text(size=28)) + 
-    theme(axis.title.x = element_text(size=30)) + 
-    theme(plot.title = element_text(hjust = 0.5))  +
-    theme(axis.title.y = element_blank()) +
-    scale_x_continuous(limits=c(0,16000)) +
-    theme(legend.position = "none") 
-
-# ggsave("../../results/figures/subclonal-snps-in-g1-and-g2.png", width = 10, height = 8, dpi = 300)
-
-```
-
 ## Expected Frequency Approach
 
-This approach relies on the expected frequencies of haplotypes given that they've arisen on the background of either`Genome 1` or `Genome 2`. We'll compute the log likelihood of observing the counts a SNP on a given background (SNP - G1, SNP - G2, WT - G1, WT - G2) given the expected frequencies under the assumption that the SNP is on the background of one genotype or the other. We'll sum the log likelihood over every tissue sample.
+This approach relies on the expected frequencies of haplotypes given that they've arisen on the background of either `Genome 1` or `Genome 2`. We'll compute the log likelihood of observing the counts a SNP on a given background (SNP - G1, SNP - G2, WT - G1, WT - G2) given the expected frequencies under the assumption that the SNP is on the background of one genotype or the other. We'll sum the log likelihood over every tissue sample.
 
 ```{r Compute Log Likelihood, echo = T}
-
-# TODO: Remove the f_g2 argument, it's not necessary
 
 loglik.g1.g2 = function(x11, x10, x01, x00, f_g1, f_g2, f_c, error) {
   
@@ -344,13 +248,14 @@ loglik.g1.g2 = function(x11, x10, x01, x00, f_g1, f_g2, f_c, error) {
   lik.g2 = -(dmultinom(c(x11, x10, x01, x00), prob = c(f11, f10, f01, f00), log = T))
   
   return(c(lik.g1, lik.g2))
+  
 }
 
 ```
 
 I called the overlapping reads by position rather than SNP. This means that it's possible for there to be reads that overlap SNPs in more than one haplotype. There is only one position where this is the case. I'll mask this position below. 
 
-```{r Format Bridging Reads, message=F, echo = T}
+```{r Format Bridging Reads, message=F, echo=T}
 
 # Cutoff for minimum bridging depth
 min.bridging.depth = 10
@@ -360,8 +265,7 @@ haplotype.labels = updated.df %>%
   select(POS, Haplotype) %>% 
   distinct()
 
-# Duplicate Positions 
-# TODO: Update the bridging read script to allele rather than position
+# Maks Duplicate Positions 
 masked.shared.positions = haplotype.labels %>% 
   group_by(POS) %>% 
   count() %>% 
@@ -394,7 +298,7 @@ pairs.to.test = labled.bridging.df %>%
 
 Below, I'll test all of the pairs of SNPs where one SNP belongs to a phased cluster/haplotype and the other SNP belongs to either `Genome 1` or `Genome 2`.
 
-```{r Test All SNP Pairs, echo = T}
+```{r Test All SNP Pairs, echo=T}
 
 # Check the background for all SNPs with reads bridging to Genome 1 or Genome 2
 background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do% {
@@ -524,7 +428,7 @@ background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do%
 
 Now, let's see how the pairs of SNPs agree for each cluster/haplotype.
 
-```{r Expected Frequency Assignment, fig.align='center', fig.width=16, fig.height=8}
+```{r Expected Frequency Assignment, echo=F, fig.align='center', fig.width=16, fig.height=8}
 
 cols = c("grey", "#bf1515", "#0251d9")
 names(cols) = c("neither", "genome-2", "genome-1")
@@ -548,7 +452,7 @@ background.test.df %>%
 
 ```
 
-Group by the background assignments for each cluster and count (`G1`, `G2`, and `Neither`). Assign a definitive background based on the max of the two. Pull out the SNPs that disagree for each cluster condition.
+Group by the background assignments for each cluster and count (`Genome 1`, `Genome 2`, and `Neither`). Assign a definitive background based on the max of the two. Pull out the SNPs that disagree for each cluster condition.
 
 ```{r Summarize Background Assignment, echo=T}
 
@@ -566,20 +470,21 @@ background.assignment = background.test.df %>%
 
 ```
 
-There are `r nrow(filter(background.assignment, Disagreement))` clusters with SNPs that were assigned to both `genome-1` and `genome-2`. Let's look at these more closely.
+There is `r nrow(filter(background.assignment, Disagreement))` cluster with SNPs that were assigned to both `Genome 1` and `Genome 2`. 
 
 ```{r Disagreeing Clusters, echo=F}
 
 disagreeing.clusters = background.assignment %>% 
   filter(Disagreement)
 
-disagreeing.clusters
+disagreeing.clusters %>% 
+  kable(., caption = "Disagreeing Clusters")
 
 ```
 
-Both of these clusters were assigned to `genome-2`. Let's pull out the SNPs from these clusters that mapped to `genome-1` and see where these SNPs are from. 
+Let's pull out the SNPs that map to the opposite background as the cluster assignment and see where these SNPs are located in the genome. 
 
-```{r Disagreeing SNPs, echo=T}
+```{r Disagreeing SNPs, echo=F}
 
 disagreeing.snps = background.test.df %>% 
   filter(haplotype %in% disagreeing.clusters$haplotype,
@@ -587,17 +492,17 @@ disagreeing.snps = background.test.df %>%
   pull(snp_2) %>% 
   unique()
 
-disagreeing.snps
+print(disagreeing.snps)
 
 ```
 
-There are only `r length(disagreeing.snps)` that disagree from the main cluster assignment, both in the Matrix protein where we expected the highest amount of homoplasy. It's possible that these SNPs are present on *both* `genome-1` and `genome-2`. 
+There is only `r length(disagreeing.snps)` SNP that disagrees from the main cluster assignment. Unsurprisingly, this SNP is in the Matrix protein where we expected the highest amount of homoplasy. It's reasonable that this SNP is present on *both* `Genome 1` and `Genome 2`. 
 
 ## Annotate the Haplotypes 
 
-We're going to use the 'expected frequency` method to assign genotypes to the phased clusters. This method is most explainable, although both methods ultimately give the same results. 
+We're going to use the 'expected frequency' method to assign genotypes to the phased clusters. This method is most explainable, although both methods ultimately give the same results. I'll add these background assignments to the variants.
 
-```{r Write out the assignments, echo=TRUE}
+```{r Add the assignments, echo=T}
 
 # Add rows for the non-cluster haplotype options
 background.assignment = background.assignment %>% 
@@ -613,14 +518,114 @@ assigned.df = updated.df %>%
   select(!Background) %>% 
   left_join(., background.assignment, by = "Haplotype")
   
-# Write out to assigned file. 
-write_csv(assigned.df, assigned.output.path)
+```
+
+Then, to attempt to give some reason to the cluster numbers, I'll rename them in sequential order starting with the haplotypes assigned to `Genome 1` then moving on the `Genome 2`. Within each background the clusters are ordered based on mean frequency.
+
+```{r Rename in Sequential Order, echo=T}
+
+# Get the new 'sequential' haplotype names
+haplotype.names = assigned.df %>%
+  filter(str_detect(Haplotype, "^cluster")) %>% 
+  select(SNP, AF, Haplotype, Background) %>% 
+  group_by(Haplotype, Background) %>% 
+  summarise(AF = mean(AF)) %>% 
+  group_by(Background) %>% 
+  arrange(-AF, .by_group=T) %>% 
+  ungroup() %>% 
+  mutate(New_Haplotype = paste("cluster", row_number())) %>% 
+  select(Haplotype, New_Haplotype)
+
+
+assigned.df = assigned.df %>% 
+  left_join(., haplotype.names, by = "Haplotype") %>% 
+  mutate(New_Haplotype = if_else(is.na(New_Haplotype), Haplotype, New_Haplotype)) %>% 
+  rename(Cluster = Haplotype, Haplotype = New_Haplotype)
+  
+```
+
+What do these validated clusters look like? 
+
+```{r Renamed Haplotypes, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=F}
+
+# Get the haplotype names
+haplotypes.label = assigned.df %>% 
+  select(SNP, Haplotype, Background) %>% 
+  distinct()
+
+# Expand the mutations to have a frequency for every tissue.
+expanded.df = assigned.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(assigned.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Tissue order - roughly by the location in the brain 
+tissue.order = c(
+  "SSPE 1", 
+  "SSPE 2",
+  "Frontal Cortex 2", 
+  "Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Parietal Lobe",
+  "Temporal Lobe", 
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Midbrain", 
+  "Upper Brain Stem",
+  "Brain Stem",
+  "Cerebellum",
+  "Cerebellum Nucleus"
+)
+
+haplotype.order = c("cluster 1",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11",
+                    "cluster 12",
+                    "cluster 13")
+
+expanded.df %>% 
+    filter(Haplotype %in% haplotype.order) %>% 
+    mutate(Tissue = case_when(
+      Tissue == "UBS" ~ "Upper Brain Stem",
+      TRUE ~ Tissue
+    )) %>% 
+    mutate(Genotype = case_when(
+      Background == "genome-1" ~ "G1",
+      Background == "genome-2" ~ "G2"
+    )) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, col = (Genotype))) +
+      geom_line(aes(group = SNP)) +
+      facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
+      scale_color_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill = "Genotype", col = "Genotype") +
+      theme_bw(20) +
+      theme(strip.text.x = element_text(size = 12)) +
+      theme(axis.title.x=element_blank()) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(legend.position="bottom")
 
 ```
 
-```{r Write out the SNP backgrounds, echo=T}
 
-write_csv(background.test.df, background.output.path)
+```{r Write out the SNP backgrounds, echo=F}
+
+# Write out to assigned file. 
+print(paste("Writing the results to", output.path))
+write_csv(assigned.df, output.path)
 
 ```
 

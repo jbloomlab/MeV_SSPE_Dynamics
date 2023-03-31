@@ -113,7 +113,7 @@ if (!file.exists(figure.dir)) {
 
 Let's take a look at the re-named and background annotated clusters/haplotypes from the previous notebook `04-assign-haplotype-backgrounds.Rmd`.
 
-```{r Load in Data, echo=T}
+```{r Load in Data, echo=F}
 
 # Read in the variants with G1, G2, and G1-1 labeled
 labeled.df = read_csv(updated.data, show_col_types = FALSE) %>% 
@@ -159,7 +159,7 @@ tissue.order = c(
   "Cerebellum Nucleus"
 )
 
-# Haplotype order - sequentialy by frequency
+# Haplotype order - sequential by frequency adn genotype
 haplotype.order = c("cluster 1",
                     "cluster 2",
                     "cluster 3",
@@ -253,7 +253,8 @@ SNPassignmentsByTau = foreach(tau = taus, .combine = "rbind")%do%{
 
 SNPassignmentsByTau %>% 
   select(!c("total", "linked", "forbidden")) %>% 
-  head()
+  head() %>% 
+  kable(., caption = "Linkage Info")
 
 ```
 
@@ -310,7 +311,7 @@ There are a few haplotypes that have a significant amount of internal variation 
 
 Cluster 6 appears to be a set of SNPs on the background of `Genome 1` in the Frontal Cortex 2 specimen. However, since these SNPs are only present at appreciable frequency in a single tissue, we can't as clearly link them by their correlation in frequency alone.
 
-```{r Cluster 6, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Cluster 6, fig.align='center', fig.width=8, fig.height=5, echo=F}
 
 expanded.df %>% 
     filter(Haplotype %in% c("cluster 6")) %>% 
@@ -329,7 +330,7 @@ expanded.df %>%
 
 Another issue with this cluster is that many of the mutations are in the Matrix gene. This gene has a stop codon fairly near the start of the protein and has been allowed to neutrally accumulate a large number of mutations over time. This is exacerbated by the mutagenic activity of ADAR. The issue with this is that mutations can arise multiple times on multiple haplotype backgrounds. Controlling for this is beyond the scope of our haplotyping approach. 
 
-```{r Percentage of Matrix SNPs}
+```{r Percentage of Matrix SNPs, echo = F}
 
 labeled.df %>% 
   filter (Haplotype == "cluster 6") %>% 
@@ -337,14 +338,15 @@ labeled.df %>%
   distinct() %>% 
   group_by(Gene) %>% 
   count() %>% 
-  arrange(-n)
+  arrange(-n) %>% 
+  kable(., caption = "Cluster 6 SNPs per Gene")
 
 
 ```
 
 We can see that if we drop only the Matrix mutations from this cluster, the peaks in frequency in tissues where cluster 6 should presumably be missing are mostly gone.
 
-```{r Cluster 6 Non-matrix, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Cluster 6 Non-matrix, fig.align='center', fig.width=8, fig.height=5, echo=F}
 
 expanded.df %>% 
     filter(Haplotype %in% c("cluster 6")) %>%
@@ -366,7 +368,7 @@ expanded.df %>%
 
 One solution to this issue, short of removing all Matrix mutations, is to remove the matrix mutations that are *also* linked to genome-1-1 or genome-2. This makes the correlation much better and is a more principled approach to refining this haplotype.
 
-```{r Exclude Reccurent SNPs from Cluster 6, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Exclude Reccurent SNPs from Cluster 6, fig.align='center', fig.width=8, fig.height=5, echo=F}
 
 exclude.from.cluster.6 = rank_bridging_reads("cluster 6", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
   filter(linked >= 1) %>% 
@@ -390,6 +392,10 @@ expanded.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
+```
+
+```{r Excluding SNPs from Cluster 6, echo = T}
+
 print(paste("Excluding", length(exclude.from.cluster.6), "SNPs from cluster 6"))
 
 labeled.df = labeled.df %>% 
@@ -397,13 +403,14 @@ labeled.df = labeled.df %>%
                                 TRUE ~ Background)) %>% 
   mutate(Haplotype = case_when(POS %in% exclude.from.cluster.6 ~ "subclonal",
                                 TRUE ~ Haplotype))
+
 ```
 
 ### Cluster 12
 
 Now let's see about cluster 12 These are SNPs present in the lower brain where the read depth is pretty low, and the correlation is somewhat loose. 
 
-```{r Cluster 12, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Cluster 12, fig.align='center', fig.width=8, fig.height=5, echo=F}
 
 expanded.df %>% 
     filter(Haplotype %in% c("cluster 12")) %>%
@@ -418,6 +425,7 @@ expanded.df %>%
       theme_bw(20) +
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
+
 ```
 
 This cluster is half matrix mutations and half non-matrix mutations
@@ -430,13 +438,14 @@ labeled.df %>%
   distinct() %>% 
   group_by(Gene) %>% 
   count() %>% 
-  arrange(-n)
+  arrange(-n) %>% 
+  kable(., caption = "Cluster 12 SNPs per Gene")
 
 ```
 
 Below, I'll clean up cluster 12 by removing SNPs that are linked to genome-1 (since cluster 12 is a genome-2 cluster) and removing Matrix mutations unless they're linked to other cluster 12 mutations or genome-2. Finally, there is a very low depth F mutation that visibly looks like an outlier. I'll remove this as well.
 
-```{r Clean Up Cluster 12, fig.align='center', fig.width=8, fig.height=5, echo=T}
+```{r Clean Up Cluster 12, echo=T}
 
 linked.to.cluster.12 = rank_bridging_reads("cluster 12", labeled.df, SNPassignmentsByTau, min.freq = 0.1) %>% 
   filter(linked >= 1) %>% 
@@ -473,6 +482,15 @@ cluster.12.snps = labeled.df %>%
 
 exclude.from.cluster.12 = cluster.12.snps[which(!cluster.12.snps %in% keep.in.cluster.12)]
 
+labeled.df = labeled.df %>% 
+  mutate(Background = case_when((POS %in% exclude.from.cluster.12) ~ "subclonal",
+                                TRUE ~ Background)) %>% 
+  mutate(Haplotype = case_when((POS %in% exclude.from.cluster.12) ~ "subclonal",
+                                TRUE ~ Haplotype))
+
+```
+
+```{r Cluster 12 Clean, fig.align='center', fig.width=8, fig.height=5, echo=F}
 
 expanded.df %>% 
     filter(Haplotype %in% c("cluster 12")) %>%
@@ -488,14 +506,6 @@ expanded.df %>%
       theme_bw(20) +
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
-
-
-labeled.df = labeled.df %>% 
-  mutate(Background = case_when((POS %in% exclude.from.cluster.12) ~ "subclonal",
-                                TRUE ~ Background)) %>% 
-  mutate(Haplotype = case_when((POS %in% exclude.from.cluster.12) ~ "subclonal",
-                                TRUE ~ Haplotype))
-
 ```
 
 ### Cluster 2 
@@ -610,7 +620,7 @@ gene_order = c("N", "P", "M", "F", "H", "L")
 
 ```
 
-```{r Figure 5a, fig.align='center', fig.width=15, fig.height=10}
+```{r Figure 5a, message=F, warnings=F, fig.align='center', fig.width=15, fig.height=10}
 
 # Define the order of haplotypes on the y-axis
 figure.haplotype.order = c("SSPE Ancestor",
@@ -634,7 +644,7 @@ figure.haplotype.order = c("SSPE Ancestor",
 
 
 # Load in the 'ancestral' SNPs that are included in the consensus patient-specific reference
-ancestral.snps = read_csv(ancestral.data) %>% 
+ancestral.snps = read_csv(ancestral.data, show_col_types = FALSE) %>% 
   mutate(ADAR = case_when(
     REF == 'T' & ALT == 'C' ~ TRUE, 
     REF == 'A' & ALT == 'G' ~ TRUE,
@@ -757,13 +767,13 @@ distribution.df %>%
     theme(axis.title.y = element_blank()) +
     theme(legend.position = "bottom")  
 
-ggsave("./figure-5a.png", width = 15, height = 10, dpi = 300)
+ggsave(paste(figure.dir, "figure-5a.png", sep=""), width = 15, height = 10, dpi = 300)
 
 ```
 
 Finally, I'll write out these validated and renamed clusters to a new file. 
 
-```{r echo=T}
+```{r Write Output, echo=F}
 
 # Write the validated labeled data
 print(paste("Writing out the variants to", output.path))

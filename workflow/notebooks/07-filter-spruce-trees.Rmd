@@ -15,7 +15,7 @@ output:
     smooth_scroll: yes
 ---
 
-The goal of this notebook is to visualize the phylogenetic relationship of the haplotypes identified in the previous notebooks. I'll read in the tree's from `SPRUCE` as implemented by `MACHINA` and make a nicely formatted tree where branch length corresponds to mutations. 
+The goal of this notebook is to visualize the phylogenetic relationship of the haplotypes identified in the previous notebooks. I'll read in the tree's from `SPRUCE` as implemented by `MACHINA` and make a nicely formatted tree where branch length corresponds to mutations. **The output of this notebook is a final filtered set of cluster relationships that can be made into a phylogenetic tree**.
 
 ```{r Setup, include=FALSE}
 require("knitr")
@@ -42,6 +42,7 @@ if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
   updated.data = snakemake@input[["1"]]
+  
   # Phylogeny 
   phylo.data =  snakemake@input[["2"]]
 
@@ -60,16 +61,49 @@ if (exists("snakemake")) {
 
 ```
 
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+if (exists("snakemake")) {
+  
+  # Path to save figures
+  figure.dir = snakemake@params[['figures']]
+  
+    # Path to save the polished assigned variants
+  output.path = snakemake@params[['final_tree']]
+
+  
+} else {
+
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+  
+  # Path to save the polished assigned variants
+  output.path = "../../results/phylogeny/filtered_spruce_tree.csv"
+
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
+
+```
+
 ## SPRUCE Trees
 
 A set of phylogenetic relationships were fit to the data using the algorithm `SPRUCE`. We'll visualize these possible trees below. Ultimately, the goal is filter these based on bridging reads. 
 
-```{r Read Spruce, echo=T}
+```{r Read Spruce, echo=F}
 
 # Code adapted from Alison Feder #
 
 # Read in the output from Machina
-machina.output = readLines( "../../results/variants/spruce_output.tsv")
+machina.output = readLines(spruce.data)
 
 # Process the output trees into edges
 treenum = NA
@@ -90,7 +124,7 @@ tree.df = tree.df %>%
 
 ```
 
-Let's visualize All of these trees below. 
+Let's visualize **all** of these trees below. 
 
 ```{r Color Palletes, echo=F}
 
@@ -112,31 +146,14 @@ names(cluster.6.color) = cluster.6.haplotype
 
 ## Combine
 haplotype.colors = c(genome.1.colors, genome.2.colors, cluster.6.color)
-# names(haplotype.colors) = gsub(" ", "_", names(haplotype.colors ))
 haplotype.colors = c(haplotype.colors , "Anc" = "black")
 # cluster 1 is too light
 haplotype.colors['cluster 1'] = "#bdbebf"
-
-## Set the Compartment Colors 
-# Frontal Cortex
-FCs = c("Frontal Cortex 1", "Frontal Cortex 2", "Frontal Cortex 3")
-FCs.colors = brewer.pal(length(FCs), "Greens")
-names(FCs.colors) = FCs
-# Internal Compartments
-Internal = c("Cerebellum Nucleus", "Cerebellum", "Midbrain", "Internal Capsule", "Brain Stem", "UBS", "Hippocampus")
-Internal.colors = brewer.pal(length(Internal), "YlOrRd")
-names(Internal.colors) = Internal
-# Other Lobes
-Other =  c("Occipital Lobe", "Temporal Lobe", "Parietal Lobe")
-Other.colors = brewer.pal(length(Other), "Blues")
-names(Other.colors) = Other
-# Combine
-Compartment.cols = c(FCs.colors, Internal.colors, Other.colors)
-names(Compartment.cols) = gsub(" ", "_", names(Compartment.cols))
+# names(haplotype.colors) = gsub(" ", "_", names(haplotype.colors ))
 
 ```
 
-```{r Spruce Trees, message=F, warning=F, fig.align='center', fig.width=25, fig.height=25, echo=T}
+```{r Spruce Trees, message=F, warning=F, fig.align='center', fig.width=25, fig.height=25, echo=F}
 
 names(haplotype.colors) = gsub(" ", "_", names(haplotype.colors ))
 ggnetwork(network(tree.df, multiple = TRUE), by = "treenum")  %>%
@@ -145,9 +162,11 @@ ggnetwork(network(tree.df, multiple = TRUE), by = "treenum")  %>%
     geom_edges(curvature = 0.15) +
     geom_nodes(aes(fill = vertex.names), size = 10, pch = 21) +
     scale_fill_manual(values = haplotype.colors) +
-    geom_nodetext(aes(y = y - 0.06, label =  vertex.names), color = "black", size = 2) +
+    geom_nodetext(aes(y = y - 0.06, label =  gsub("_", " ", vertex.names)), color = "black", size = 3) +
     facet_wrap(~treenum) +
     theme(legend.position = "none")
+
+ggsave(paste(figure.dir, "all_spruce_trees_unfiltered.png", sep=""), width = 25, height = 25, dpi = 300)
 
 ```
 
@@ -160,7 +179,14 @@ First, we already have some knowledge about whether a cluster is descended from 
 ```{r Genotype Background Violations, echo = T}
 
 cluster.backgrounds = read_csv(updated.data, show_col_types = F) %>% 
-  select(Haplotype = Haplotype_Name, Background) %>% 
+  # For consistency, change the names of G1, G2, and G-1-1
+  mutate(Haplotype = case_when(
+    Haplotype == "genome-1" ~ "genome 01",
+    Haplotype == "genome-1-1" ~ "genome 1",
+    Haplotype == "genome-2" ~ "genome 2",
+    T ~ Haplotype
+  )) %>% 
+  select(Haplotype, Background) %>% 
   distinct() %>% 
   filter(!Haplotype %in% c("both", "subclonal")) %>% 
   add_row(Haplotype = "Anc", Background = "Anc")
@@ -220,7 +246,7 @@ To determine if the remaining tress fit our data, I'll see if there are cluster 
 
 To do this, I'll use the same approach that was used to assign clusters to either `Genome 1` or `Genome 2`. However, in this version, I'll be testing whether a cluster is descended from another cluster, or if they arose independently. 
 
-```{r Valid Trees, echo=T, fig.align='center', fig.width=8, fig.height=4}
+```{r Valid Trees, warning=F, message=F, echo=F, fig.align='center', fig.width=8, fig.height=4}
 
 valid.trees.df = tree.df %>% 
   filter(!tree %in% trees.with.genotype.violations)
@@ -231,22 +257,29 @@ ggnetwork(network(valid.trees.df, multiple = TRUE), by = "treenum")  %>%
     geom_edges(curvature = 0.15) +
     geom_nodes(aes(fill = vertex.names), size = 10, pch = 21) +
     scale_fill_manual(values = haplotype.colors) +
-    geom_nodetext(aes(y = y - 0.06, label =  vertex.names), color = "black", size = 2) +
+    geom_nodetext(aes(y = y - 0.06, label = gsub("_", " ", vertex.names)), color = "black", size = 3) +
     facet_wrap(~treenum) +
     theme(legend.position = "none")  
 
 ```
 
-For this approach, we need the individual mutations and their frequecy, the mean frequency of every cluster in each tissue sample, and the bridging reads. 
+For this approach, we need the individual mutations and their frequency, the mean frequency of every cluster in each tissue sample, and the bridging reads. 
 
-```{r Format Data, echo = T}
+```{r Format Data, echo = F}
 
 # Import the SNPs that were phased in the previous notebook 
-updated.df = read_csv(updated.data, show_col_types = FALSE)
+updated.df = read_csv(updated.data, show_col_types = FALSE) %>% 
+  # For consistency, change the names of G1, G2, and G-1-1
+  mutate(Haplotype = case_when(
+    Haplotype == "genome-1" ~ "genome 01",
+    Haplotype == "genome-1-1" ~ "genome 1",
+    Haplotype == "genome-2" ~ "genome 2",
+    T ~ Haplotype
+  ))
 
 # Get the haplotype names for each SNP
 haplotypes.SNP.label = updated.df %>% 
-  select(Haplotype = Haplotype_Name, SNP) %>% 
+  select(Background, Haplotype, SNP) %>% 
   distinct()
 
 # Expand the haplotyped SNPs to have records for all tissues
@@ -261,7 +294,7 @@ expanded.df = updated.df %>%
 
 # Calculate the mean haplotype frequency across each tissue
 haplotype.mean = expanded.df %>% 
-  group_by(Tissue, Haplotype) %>% 
+  group_by(Tissue, Haplotype, Background) %>% 
   summarize(AF = mean(AF))
 
 # Import the reads that bridge all pairs of SNPs for the multinomial approach
@@ -272,7 +305,7 @@ min.bridging.depth = 10
   
 # Labels for the haplotypes
 haplotype.labels = updated.df %>% 
-  select(POS, Haplotype = Haplotype_Name) %>% 
+  select(POS, Haplotype = Haplotype) %>% 
   distinct()
 
 # Some positions are in more than on haplotype, filter these
@@ -459,9 +492,9 @@ for (tree.name in unique(valid.trees.df$tree)) {
 }
 
 ```
-It looks like we can confidently say that `cluster 7` is **not** descended from `cluster 5`. This means that can rule out all but a single single valid tree. 
+It looks like we can confidently say that `cluster 8` is **not** descended from `cluster 2`. This means that can rule out all but a single single valid tree. 
 
-```{r Valid Tree, echo = T}
+```{r Valid Tree, echo = F}
 
 # Trees with 'non-nesting' clusters are invalid
 trees.with.cluster.violations = cluster.test.df %>%
@@ -471,9 +504,9 @@ trees.with.cluster.violations = cluster.test.df %>%
 
 ```
 
-There is only `r length(trees.with.violations)` tree with violations and that's `r trees.with.violations`.
+There is only `r length(trees.with.cluster.violations)` tree with violations and that's `r trees.with.cluster.violations`.
 
-```{r Final Tree, echo=T, fig.align='center', fig.width=4, fig.height=4}
+```{r Final Tree, echo=F, fig.align='center', fig.width=5, fig.height=5}
 
 final.tree.df = tree.df %>% 
   filter(!tree %in% c(trees.with.genotype.violations, trees.with.cluster.violations))
@@ -484,8 +517,112 @@ ggnetwork(network(final.tree.df, multiple = TRUE), by = "treenum")  %>%
     geom_edges(curvature = 0.15) +
     geom_nodes(aes(fill = vertex.names), size = 10, pch = 21) +
     scale_fill_manual(values = haplotype.colors) +
-    geom_nodetext(aes(y = y - 0.06, label =  vertex.names), color = "black", size = 2) +
-    facet_wrap(~treenum) +
+    geom_nodetext(aes(y = y - 0.06, label = gsub("_", " ", vertex.names)), color = "black", size = 3) +
     theme(legend.position = "none")  
 
+ggsave(paste(figure.dir, "final-tree.png", sep=""), width = 4, height = 4, dpi = 300)
+
 ```
+
+```{r Write Output, echo = F}
+
+# Write out the final tree 
+print(paste("Writing final tree to", output.path))
+write_csv(final.tree.df, output.path)
+
+```
+
+## Haplotype Frequencies
+
+Now we can confirm that cluster 5 is on the background of cluster 1. Let's visualize this in the format of a 'psuedo-mueller' plot. 
+
+```{r All Clusters, warning=F, fig.align='center', fig.width=8, fig.height=10, echo=F}
+
+# Tissue order - roughly by the location in the brain 
+tissue.order = c(
+  "SSPE 1", 
+  "SSPE 2",
+  "Frontal Cortex 2", 
+  "Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Parietal Lobe",
+  "Temporal Lobe", 
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Midbrain", 
+  "Upper Brain Stem",
+  "Brain Stem",
+  "Cerebellum",
+  "Cerebellum Nucleus"
+)
+
+# Haplotype order - sequential and by genotype/frequency
+haplotype.order = c("cluster 1",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11",
+                    "cluster 12",
+                    "cluster 13")
+
+haplotype.clusters = haplotype.mean %>% 
+  filter(Background %in% c("genome-1", "genome-2") & (!Haplotype %in% c("genome 1", "genome 01", "genome 2"))) %>% 
+  pull(Haplotype) %>% 
+  unique()
+
+names(haplotype.colors) = gsub("_", " ", names(haplotype.colors))
+
+genome.means = haplotype.mean %>% 
+  filter(Haplotype %in% c("genome 01", "genome 2")) %>% 
+  mutate(Background = case_when(
+    Background == "genome-1" ~ "Genome 1",
+    Background == "genome-2" ~ "Genome 2",
+    TRUE ~ Background
+  ))
+
+backgrounds = haplotype.mean %>% 
+  ungroup() %>% 
+  select(Haplotype, Background) %>% 
+  distinct() %>% 
+  mutate(Background = case_when(
+    Background == "genome-1" ~ "Genome 1",
+    Background == "genome-2" ~ "Genome 2",
+    TRUE ~ Background
+  ))
+
+haplotype.mean %>% 
+  select(!Background) %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>%
+  # Cluster 5 is on the background cluster 1 on Genome 01
+  mutate(`cluster 1` = `cluster 1` - `cluster 5`) %>% 
+  # If the average frequency is below 0, return it to 0
+  mutate(`cluster 1` = if_else(`cluster 1` < 0, 0, `cluster 1`)) %>% 
+  pivot_longer(cols = -c(Tissue), names_to = "Haplotype", values_to = "AF") %>% 
+  filter(Haplotype %in% haplotype.clusters) %>% 
+  left_join(., backgrounds, by = "Haplotype") %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, fill = (factor(Haplotype, levels = haplotype.order)), group = Haplotype)) +
+      geom_area() +
+      geom_line(data = genome.means, aes(x = factor(Tissue, levels = tissue.order), col = (Haplotype), y = AF, group = Haplotype), linewidth = 2) +
+      facet_wrap(~Background, ncol = 1) +
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      scale_fill_manual(values = haplotype.colors, name="", breaks=haplotype.order) +
+      scale_color_manual(values = haplotype.colors, guide = "none") +
+      theme_bw(16) +
+      theme(axis.text.x = element_text(angle = 35, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+ggsave(paste(figure.dir, "figure-5bc.png", sep=""), width = 8, height = 10)
+
+```
+
+
