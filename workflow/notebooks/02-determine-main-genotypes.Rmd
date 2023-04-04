@@ -17,7 +17,7 @@ output:
 
 As observed by the Cattaneo lab, there are clearly sets of mutations that move together in frequency across every spatial region of the brain. In particular, there are two sets of mutations who's average frequency appears to add up to 100% in every tissue. These two set of mutations appear to be ancestral to all virus variants in the brain.
 
-The goal of this notebook is to formalize an approach to phase these sets of mutations by clustering variants that have strongly correlated frequencies across multiple tissue samples using k-medoids clustering on a correlation matrix of allele frequeny. 
+The goal of this notebook is to formalize an approach to phase these sets of mutations by clustering variants that have strongly correlated frequencies across multiple tissue samples using k-medoids clustering on a correlation matrix of allele frequency 
 
 In this notebook, I identify the 'genotypes' `Genome 1` and `Genome 2`. In addition to these two 'genotypes', I identify a third set of mutations that appears to arise on `Genome 1`, but is at very low frequency in the Frontal Cortex 2 sample **The output of this notebook is the list of variants annotated by whether they are `Genome 1`, `Genome 2`, `Genome-1-1`, or `subclonal.`**
 
@@ -158,7 +158,7 @@ tissue_order = c(
 
 ```
 
-We can see these mutations clearly in the SSPE 1 pilot sample if we draw 'gates' of frequency around mutations on the plot. Below, I'm drawing 'gates' around 60-75% and 30-45% of the genome respectively.
+We can see these mutations clearly in the SSPE 2 pilot sample if we draw 'gates' of frequency around mutations on the plot. Below, I'm drawing 'gates' around 65-80% and 20-35% of the genome respectively.
 
 ```{r Format Pilot Data, echo = F, warning = F}
 
@@ -169,9 +169,9 @@ ancestral.df = read_csv(ancestral.data, show_col_types = FALSE) %>%
   mutate(AF = 1.0) 
 
 # Format the data for plotting
-sspe.1.df = selected.variants.df %>% 
+sspe.2.df = selected.variants.df %>% 
   # Select the pilot specimen
-  filter(Tissue == "SSPE 1") %>% 
+  filter(Tissue == "SSPE 2") %>% 
   # Select the important columns 
   select(colnames(ancestral.df)) %>% 
   # Add in the ancestral SNPs 
@@ -179,8 +179,8 @@ sspe.1.df = selected.variants.df %>%
   # Bind variants by frequency
   mutate(Genotype = case_when(
     AF >= 0.9 ~ "CBA",
-    AF >= 0.6 & AF <= 0.75 ~ "CG1", 
-    AF >= 0.3 & AF <= 0.45 ~ "CG2",
+    AF >= 0.65 & AF <= 0.8 ~ "CG1", 
+    AF >= 0.2 & AF <= 0.35 ~ "CG2",
     TRUE ~ "subclonal"
   )) %>% 
   # Point size should be small for mutation we don't know about
@@ -198,19 +198,19 @@ sspe.1.df = selected.variants.df %>%
     SNP == "G3812A" ~ "M-W125*",
     SNP == "T6817A" ~ "F-L454M",
     SNP == "T3586C" ~ "M-F50S",
-    SNP == "T7293C" ~ "H-I8T",
+    # SNP == "T7293C" ~ "H-I8T",
     SNP == "C7036T" ~ "F-Q527*",
     TRUE ~ ""
   )) 
   
 # Binned SNPS (i.e. CBA, CG1, and CG2)
-binnned.snps = sspe.1.df %>% 
+binnned.snps = sspe.2.df %>% 
   filter(Genotype %in% c("CBA", "CG1", "CG2") & Driver == "")
 # Un-binned SNPS (i.e. subclonal)
-subclonal.snps = sspe.1.df %>% 
+subclonal.snps = sspe.2.df %>% 
   filter(Genotype == 'subclonal' & Driver == "")
 # Putative driver SNPs
-driver.snps = sspe.1.df %>% 
+driver.snps = sspe.2.df %>% 
   filter(Driver != "")
 
 ```
@@ -218,7 +218,7 @@ driver.snps = sspe.1.df %>%
 ```{r Plot Pilot Data, warning=F, echo = F, fig.align = 'center', fig.width = 10, fig.height = 5}
 
 # Plot the pilot data with sample SSPE 1
-ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +idh
+ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +
   geom_point(size = 2) + 
   geom_point(data = subclonal.snps, color = "#878484", size = 1) + 
   geom_point(data = driver.snps, color = "black", size = 3) + 
@@ -301,7 +301,7 @@ What are the counts of mutations in each of these three bins (`CBA`: "Candidate 
 ```{r Mutations in Each Genotype, echo = F}
 
 # What's the count of SNPs in each category?
-sspe.1.df %>% 
+sspe.2.df %>% 
   group_by(Genotype) %>% 
   count() %>% 
   kable(., caption = "Candidate Genotype Variant Counts")
@@ -696,4 +696,142 @@ kmedoids.SNPs %>%
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
 
 ```
+
+How well did the frequency bins stack up with the real assignments? 
+
+```{r Format Annotated SSPE Data, echo = F, warning = F}
+
+# Read in the consensus SNPs
+ancestral.df = read_csv(ancestral.data, show_col_types = FALSE) %>% 
+  mutate(SNP = paste0(REF, POS, ALT)) %>% 
+  select(POS, REF, ALT, SNP) %>% 
+  mutate(AF = 1.0, Haplotype = "Ancestral") 
+
+# Format the data for plotting
+sspe.2.df = labeled.df %>% 
+  # Select the pilot specimen
+  filter(Tissue == "SSPE 2") %>% 
+  # Select the important columns 
+  select(colnames(ancestral.df)) %>% 
+  # Add in the ancestral SNPs 
+  bind_rows(., ancestral.df) %>% 
+  # Bind variants by frequency
+  mutate(Genotype = case_when(
+    AF >= 0.9 ~ "CBA",
+    Haplotype == "genome-1" ~ "CG1", 
+    Haplotype == "genome-1-1" ~ "CG1", 
+    Haplotype == "genome-2" ~ "CG2", 
+    TRUE ~ "subclonal"
+  )) %>% 
+  # Point size should be small for mutation we don't know about
+  mutate(Size = if_else(Genotype == "subclonal", "small", "normal")) %>% 
+  # Point shape depends on whether the mutation is a transition or transversion
+  mutate(Shape = case_when(
+    REF == "A" & ALT == "G" ~ "A to G / U to C",
+    REF == "T" & ALT == "C" ~ "A to G / U to C",
+    REF == "G" & ALT == "A" ~ "Other Transitions",
+    REF == "C" & ALT == "T" ~ "Other Transitions",
+    TRUE ~ "Transversions"
+  )) %>% 
+  # We want to highlight mutations that are candidate 'Drivers' of spread
+  mutate(Driver = case_when(
+    SNP == "G3812A" ~ "M-W125*",
+    SNP == "T6817A" ~ "F-L454M",
+    SNP == "T3586C" ~ "M-F50S",
+    SNP == "C7036T" ~ "F-Q527*",
+    TRUE ~ ""
+  )) 
+  
+# Binned SNPS (i.e. CBA, CG1, and CG2)
+binnned.snps = sspe.2.df %>% 
+  filter(Genotype %in% c("CBA", "CG1", "CG2") & Driver == "")
+# Un-binned SNPS (i.e. subclonal)
+subclonal.snps = sspe.2.df %>% 
+  filter(Genotype == 'subclonal' & Driver == "")
+# Putative driver SNPs
+driver.snps = sspe.2.df %>% 
+  filter(Driver != "")
+
+```
+
+```{r Plot Annotated SSPE Data, warning=F, echo = F, fig.align = 'center', fig.width = 10, fig.height = 5}
+
+# Plot the pilot data with sample SSPE 1
+ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape)) +
+  geom_point(size = 2) + 
+  geom_point(data = subclonal.snps, color = "#878484", size = 1) + 
+  geom_point(data = driver.snps, color = "black", size = 3) + 
+  geom_text_repel(data = driver.snps, aes(label = Driver), color = "black", point.padding = 1) + 
+  xlab("Position") + 
+  ylab("Allele Frequency") +
+  scale_color_manual(values = c("#d9cb34", "#307EC2", "#B63F3E")) +
+  scale_shape_discrete(name="Mutation") +
+  
+  # == Annotations of genes == #
+  
+  # 3' Start
+  annotate(geom = "text", x = (N$Start - 150), y =  -.05, label = "3'", size = 5) +
+   
+  # Nucleoprotein
+  annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#d97634", col = "black", size = .1) +
+  annotate(geom = "text", x = (N$Stop + N$Start)/2, y =  -.05, label = "N", size = 5) +
+  annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = 1.1,
+                 alpha = .05, fill = "#d97634", size = .1) +  
+ 
+  # P/V/C
+  annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#fcff3d", col = "black", size = .1) +
+  annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y =  -.05, label = "P/V/C", size = 5) +
+  annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#fcff3d", size = .1) +
+ 
+  # Matrix protein
+  annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#0db51b", col = "black", size = .1) +
+  annotate(geom = "text", x = (M$Stop + M$Start)/2, y =  -.05, label = "M", size = 5)  +
+  annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#0db51b", size = .1) +
+ 
+  # Fusion protein
+  annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#6A3D9A", col = "black", size = .1) +
+  annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y =  -.05, label = "F", size = 5) +
+  annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#6A3D9A", size = .1) +
+
+  # Hemagluttinin
+  annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#0251d9", col = "black", size = .1) +
+  annotate(geom = "text", x = (H$Stop + H$Start)/2, y =  -.05, label = "H", size = 5) +
+  annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#0251d9", size = .1) +
+
+  # Large protein
+  annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = -.1, ymax = 0 ,
+             alpha = .5, fill = "#bf1515", col = "black", size = .1) +
+  annotate(geom = "text", x = (L$Stop + L$Start)/2, y = -.05, label = "L", size = 5) +
+  annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 1.1,
+             alpha = .05, fill = "#bf1515", size = .1) +
+  
+  # 5' Start
+  annotate(geom = "text", x = (L$Stop + 150), y =  -.05, label = "5'", size = 5) +
+ 
+  
+  # Themes
+  theme_classic() +
+  theme(panel.grid.major.y = element_line(colour="grey", linetype="dashed")) +
+  theme(legend.position="bottom", legend.box = "horizontal") +
+  theme(legend.box.background =element_blank()) +
+  theme(text=element_text(size=16)) + 
+  theme(legend.text = element_text(size=12)) +
+  theme(axis.text.x = element_text(size=16)) + 
+  theme(axis.title.x = element_text(size=16)) + 
+  scale_x_continuous(limits=c(-150, 16150), breaks=c(0, 5000, 10000, 15000)) +
+  scale_y_continuous(breaks=c(0, 0.25, 0.5, 0.75, 1.0)) +
+  theme(legend.position = "bottom") 
+
+```
+
+
 

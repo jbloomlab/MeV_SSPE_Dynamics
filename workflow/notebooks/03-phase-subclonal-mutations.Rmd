@@ -720,7 +720,7 @@ figure_4b.df = labeled.df %>%
     SNP == "G3812A" ~ "M-W125*",
     SNP == "T6817A" ~ "F-L454M",
     SNP == "T3586C" ~ "M-F50S",
-    SNP == "T7293C" ~ "H-I8T",
+    # SNP == "T7293C" ~ "H-I8T",
     SNP == "C7036T" ~ "F-Q527*",
     TRUE ~ ""
   )) %>% 
