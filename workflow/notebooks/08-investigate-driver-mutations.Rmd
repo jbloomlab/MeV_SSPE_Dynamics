@@ -335,10 +335,10 @@ Other than being excluded from cluster 13, it's not super clear how to fit this 
 
 We looked at all mutations earlier in the analysis. We also looked at putative driver mutations in the context of all mutations. Now we have new cluster names. Let's re-make these plots. 
 
-```{r Figure 4a, fig.align='center', fig.width=14, fig.height=7, echo=FALSE}
+```{r Figure 5, fig.align='center', fig.width=15, fig.height=7, echo=FALSE}
 
 # Order of the tissues for the x-axis
-expanded_tissue_order = c(
+tissue.order = c(
   "SSPE 1", 
   "SSPE 2",
   "Frontal Cortex 2", 
@@ -357,7 +357,7 @@ expanded_tissue_order = c(
 )
 
 haplotype.colors =  c("#87CEEB", "#000000", "#22488F", "#B02B23")
-names(haplotype.colors) = c("G-01", "G-FC2", "G-1", "G-2")
+names(haplotype.colors) = c("G-01", "G-01 subcluster b", "G-01 subcluster a", "G-2")
 
 # Get the haplotype names
 haplotypes.label = labeled.df %>% 
@@ -373,108 +373,29 @@ expanded.df = labeled.df %>%
   mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
   left_join(., haplotypes.label, by = "SNP") 
 
-# C4573T is missing in the Cerebellum due to low depth filters. Add this back in.
+# C4573T and C4502T are missing in the Cerebellum due to low depth filters. Add these back in.
 variant.df = read_csv(variant.data, show_col_types = F)
 C4573T.AF = variant.df %>%
   mutate(SNP = paste(REF, POS, ALT, sep = "")) %>%
-  filter(SNP == "C4573T" & Tissue == 'Cerebellum') %>% 
+  filter(SNP == "C4573T" & Tissue == 'Cerebellum' & Caller == 'lofreq') %>% 
+  pull(AF)
+C4502T.AF = variant.df %>%
+  mutate(SNP = paste(REF, POS, ALT, sep = "")) %>%
+  filter(SNP == "C4502T" & Tissue == 'Cerebellum' & Caller == 'lofreq') %>% 
   pull(AF)
 expanded.df = expanded.df %>% 
   mutate(AF = case_when(
     SNP == "C4573T" & Tissue == 'Cerebellum' ~ C4573T.AF,
-    TRUE ~ AF
-  ))
-
-# Format the data for plotting
-figure_4b.df = labeled.df %>% 
-  mutate(Genotype = case_when(
-    Haplotype == "genome-1" ~ "G-01", 
-    Haplotype == "genome-1-1" ~ "G-1",
-    Haplotype == "genome-2" ~ "G-2",
-    Haplotype == "cluster 6" ~ "G-FC2",
-    TRUE ~ "subclonal"
-  )) %>% 
-  select(POS, REF, ALT, SNP, AF, Genotype, Tissue) %>% 
-  mutate(Size = if_else(Genotype == "subclonal", "small", "normal")) %>% 
-  mutate(Driver = case_when(
-    SNP == "G3812A" ~ "M-W125*",
-    SNP == "T6817A" ~ "F-L454M",
-    SNP == "T3586C" ~ "M-F50S",
-    # SNP == "T7293C" ~ "H-I8T",
-    SNP == "C7036T" ~ "F-Q527*",
-    TRUE ~ ""
-  )) %>% 
-  mutate(Tissue = case_when(
-    Tissue == "UBS" ~ "Upper Brain Stem",
-    TRUE ~ Tissue
-  ))
-
-core.snps = figure_4b.df %>% 
-  filter(Genotype != 'subclonal' & Driver == "")
-
-subclonal.snps = figure_4b.df %>% 
-  filter(Genotype == 'subclonal' & Driver == "")
-
-driver.snps = figure_4b.df %>% 
-  filter(Driver != "")
-
-# Make figure 4b of the paper
-ggplot(data = core.snps, aes(x = factor(Tissue, levels = (expanded_tissue_order)), y = AF, color = Genotype)) +
-  geom_jitter(data = subclonal.snps, color = "#878484", size = .75, width = 0.25, alpha = 0.75) + 
-  geom_jitter(size = 2, width = 0.2, alpha = 1) + 
-  geom_jitter(data = driver.snps, aes(shape = Driver, fill=Genotype), color = "black", size = 3, alpha=1, width = 0, stroke = 2) + 
-  xlab("Specimen") + 
-  ylab("Allele Frequency") +
-  scale_color_manual(values = haplotype.colors) +
-  scale_fill_manual(values = haplotype.colors, guide = "none") +
-  scale_shape_manual(values=c(21,22,24))+
-  theme_bw(20) +
-  theme(axis.text.x = element_text(angle = 35, hjust=1)) 
-  
-ggsave(paste(figure.dir, "updated-figure-4b.png"), width = 14, height = 7, dpi = 300)
-
-```
-
-What are the SNPs we're calling 'Genome 1 (G1)'. These will be different than the 'Candidate Genome 1' SNPs in Figure 2, because these were identified by their correlation in frequency between all tissue specimens. 
-
-## What about Genome-1-1? 
-
-In the previous notebook, we noticed a set of mutations that made up a haplotype that arises on the background of `Genome 1`, but it mostly missing from the Frontal Cortex 2 sample. We called this haplotype `Genome-1-1`, and it's very significant because it's indicative some early divergence in the frontal cortex. Let's take a look at this haplotype in every tissue.
-
-```{r Figure 4b, fig.align='center', fig.width=15, fig.height=7, echo=FALSE}
-
-# Get the haplotype names
-haplotypes.label = labeled.df %>% 
-  select(SNP, Haplotype, Background) %>% 
-  distinct()
-
-# Expand the mutations to have a frequency for every tissue.
-expanded.df = labeled.df %>% 
-  select(SNP, Tissue, AF, POS) %>% 
-  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
-  pivot_longer(cols = !c(SNP, POS), names_to = "Tissue", values_to = "AF") %>% 
-  left_join(., select(labeled.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
-  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
-  left_join(., haplotypes.label, by = "SNP") 
-
-# C4573T is missing in the Cerebellum due to low depth filters. Add this back in.
-variant.df = read_csv(variant.data, show_col_types = F)
-C4573T.AF = variant.df %>%
-  mutate(SNP = paste(REF, POS, ALT, sep = "")) %>%
-  filter(SNP == "C4573T" & Tissue == 'Cerebellum') %>% 
-  pull(AF)
-expanded.df = expanded.df %>% 
-  mutate(AF = case_when(
-    SNP == "C4573T" & Tissue == 'Cerebellum' ~ C4573T.AF,
+    SNP == "C4502T" & Tissue == 'Cerebellum' ~ C4502T.AF,
     TRUE ~ AF
   )) 
 
-figure.4b.df = expanded.df %>% 
+figure.5.df = expanded.df %>% 
   mutate(Genotype = case_when(
     Haplotype == "genome-1" ~ "G-01", 
-    Haplotype == "genome-1-1" ~ "G-1",
+    Haplotype == "genome-1-1" ~ "G-01 subcluster a",
     Haplotype == "genome-2" ~ "G-2",
-    Haplotype == "cluster 6" ~ "G-FC2",
+    Haplotype == "cluster 6" ~ "G-01 subcluster b",
     TRUE ~ "subclonal"
   )) %>% 
   mutate(Tissue = case_when(
@@ -483,10 +404,10 @@ figure.4b.df = expanded.df %>%
   )) %>% 
   select(Tissue, AF, Genotype, POS) 
 
-subclonal.background = figure.4b.df %>% 
+subclonal.background = figure.5.df %>% 
   filter(Genotype == "subclonal")
 
-main.genotypes = figure.4b.df %>% 
+main.genotypes = figure.5.df %>% 
   filter(Genotype != "subclonal")
 
 main.genotypes %>% 
@@ -496,12 +417,12 @@ main.genotypes %>%
     geom_point(size = 2) + 
     xlab("Position") + 
     ylab("Allele Frequency") +
-    facet_wrap(~factor(Tissue, levels = (expanded_tissue_order)), ncol=5)+ 
-    scale_color_manual(values = c("#87CEEB", "#00008B", "#B63F3E", "black")) +
+    facet_wrap(~factor(Tissue, levels = (tissue.order)), ncol=5)+ 
+    scale_color_manual(values = haplotype.colors) +
     theme_bw(18) +
     theme(legend.position="bottom")
   
-ggsave(paste(figure.dir, "updated-figure-6.png"), width = 15, height = 8, dpi = 300)
+ggsave(paste(figure.dir, "figure-5.png"), width = 15, height = 8, dpi = 300)
 
 ```
 

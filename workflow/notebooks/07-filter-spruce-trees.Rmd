@@ -621,14 +621,14 @@ tissue.order = c(
 )
 
 # Haplotype order - sequential and by genotype/frequency
-haplotype.order = c("cluster 1",
+haplotype.order = c("G-FC2",
+                    "cluster 1",
                     "cluster 1a",
                     "cluster 2",
                     "cluster 3",
                     "cluster 4",
                     "cluster 5",
                     "cluster 6",
-                    "G-FC2",
                     "cluster 7",
                     "cluster 8",
                     "cluster 9",
@@ -685,7 +685,7 @@ haplotype.mean %>%
       theme(axis.text.x = element_text(angle = 35, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
-ggsave(paste(figure.dir, "figure-5bc.png", sep=""), width = 8, height = 10)
+ggsave(paste(figure.dir, "extended-figure-5.png", sep=""), width = 8, height = 10)
 
 ```
 

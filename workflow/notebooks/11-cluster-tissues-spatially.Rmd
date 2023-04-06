@@ -57,6 +57,32 @@ if (exists("snakemake")) {
 
 ```
 
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+if (exists("snakemake")) {
+  
+  # Path to save figures
+  figure.dir = snakemake@params[['figures']]
+  
+} else {
+  
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
+
+```
+
 ```{r Color Pallet, echo=F}
 
 haplotype.colors = c("#989891", "#000000", "#22488F", "#B02B23", "#E1EAF6",  "#A6C9DF", "#7AADD2","#5691C1", "#3871B0", "#67649F", "#8484B1", "#B6B7D1", "#FFFCBA", "#F9D984", "#F4B460", "#EE9B4F", "#DE4B32")
@@ -179,6 +205,9 @@ ggplot(data = df.u, aes(x = xvar, y = yvar)) +
   theme_bw(18) + 
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
+ggsave(paste(figure.dir, "extended-data-figure-4a.png"), width = 12, height = 8, dpi = 300)
+
+
 ```
 
 Now, let's add the loadings to the plot. These are the individual SNPs. 
@@ -279,3 +308,22 @@ ggplot(data = df.u, aes(x = xvar, y = yvar)) +
   theme(legend.position = "bottom")
 
 ```
+
+## Haplotypes in Space
+
+Another way of visualizing the distributions of genotypes over space is to plot the fraction of each sample that belongs to a given haplotype. These can be plotted as a pie chart where the centroid of the pie chart is the rough location of the sample in the brain. I'll make this plot below. 
+
+```{r Spatial Pie Chart}
+
+
+
+```
+
+
+
+
+
+
+
+
+
