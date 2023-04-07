@@ -685,7 +685,7 @@ haplotype.mean %>%
       theme(axis.text.x = element_text(angle = 35, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
-ggsave(paste(figure.dir, "extended-figure-5.png", sep=""), width = 8, height = 10)
+ggsave(paste(figure.dir, "extended-data-figure-7.png", sep=""), width = 8, height = 10)
 
 ```
 

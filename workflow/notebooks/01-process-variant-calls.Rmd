@@ -157,7 +157,7 @@ caller.upset = combined.variants.df %>%
                     "varscan"), sets.bar.color = "#56B4E9",
       order.by = "freq", empty.intersections = "on", text.scale = 1.5)
 
-png(file=paste(figure.dir, "caller_upset_plot.png", sep=""), width=8, height=5, units="in", res = 300)
+png(file=paste(figure.dir, "variant-caller-concordance.png", sep=""), width=8, height=5, units="in", res = 300)
 caller.upset
 dev.off()
 
@@ -370,7 +370,7 @@ selected.variants.df %>%
     scale_x_continuous(limits=c(-150,16150), breaks = c(0, 5000, 10000, 15000)) +
     theme(legend.position = "none") 
 
-ggsave(paste(figure.dir, "extended-data-figure-3.png"), width = 18, height = 12, dpi = 300)
+ggsave(paste(figure.dir, "extended-data-figure-5.png"), width = 18, height = 12, dpi = 300)
 
 ```
 

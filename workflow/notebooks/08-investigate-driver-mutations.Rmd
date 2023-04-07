@@ -357,7 +357,7 @@ tissue.order = c(
 )
 
 haplotype.colors =  c("#87CEEB", "#000000", "#22488F", "#B02B23")
-names(haplotype.colors) = c("G-01", "G-01 subcluster b", "G-01 subcluster a", "G-2")
+names(haplotype.colors) = c("G-01", "G-01 subcluster a", "G-01 subcluster b", "G-2")
 
 # Get the haplotype names
 haplotypes.label = labeled.df %>% 
@@ -393,9 +393,9 @@ expanded.df = expanded.df %>%
 figure.5.df = expanded.df %>% 
   mutate(Genotype = case_when(
     Haplotype == "genome-1" ~ "G-01", 
-    Haplotype == "genome-1-1" ~ "G-01 subcluster a",
+    Haplotype == "genome-1-1" ~ "G-01 subcluster b",
     Haplotype == "genome-2" ~ "G-2",
-    Haplotype == "cluster 6" ~ "G-01 subcluster b",
+    Haplotype == "cluster 6" ~ "G-01 subcluster a",
     TRUE ~ "subclonal"
   )) %>% 
   mutate(Tissue = case_when(
@@ -422,7 +422,7 @@ main.genotypes %>%
     theme_bw(18) +
     theme(legend.position="bottom")
   
-ggsave(paste(figure.dir, "figure-5.png"), width = 15, height = 8, dpi = 300)
+ggsave(paste(figure.dir, "figure-6.png"), width = 15, height = 8, dpi = 300)
 
 ```
 

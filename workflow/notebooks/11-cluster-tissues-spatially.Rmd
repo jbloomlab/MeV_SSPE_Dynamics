@@ -190,24 +190,44 @@ First, let's see what the PCA plot looks like with no loadings superimposed on t
 ```{r PCA no loadings, echo = F, fig.align='center', fig.width = 12, fig.height = 8}
 
 # Plot the PCA
-ggplot(data = df.u, aes(x = xvar, y = yvar)) + 
-  xlab(u.axis.labs[1]) + 
-  ylab(u.axis.labs[2]) +
-  coord_equal() +
-  geom_segment(data = df.v,
-               aes(x = 0, y = 0, xend = xvar, yend = yvar),
-               arrow = arrow(length = unit(1/2, 'picas')), col = "#FFFFFF") +
-  geom_point(size = 2) + 
-  geom_text_repel(aes(label = Tissue), size = 5) +
-  # geom_text(data = df.v, 
-  #           aes(label = varname, x = xvar, y = yvar, 
-  #               angle = angle, hjust = hjust), 
-  #           color = 'darkred', size = varname.size) + 
-  # scale_color_manual(values = c("#307EC2", "#B63F3E", "#bdbdbd")) + 
-  theme_bw(18) + 
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+df.u %>% 
+  mutate(Tissue = case_when(
+  Tissue == "Frontal Cortex 2" ~ "Frontal C2", 
+  Tissue == "Frontal Cortex 1" ~ "Frontal C1", 
+  Tissue == "Frontal Cortex 3" ~ "Frontal C3", 
+  Tissue == "Parietal Lobe" ~ "Parietal L",
+  Tissue == "Temporal Lobe" ~ "Temporal L", 
+  Tissue == "Occipital Lobe" ~ "Occipital L",
+  Tissue == "Hippocampus" ~ "Hippocampus",
+  Tissue == "Internal Capsule" ~ "Intl Capsule", 
+  Tissue == "Midbrain" ~ "Midbrain" , 
+  Tissue == "Upper Brain Stem" ~ "U Brainstem",
+  Tissue == "Brain Stem" ~ "Brainstem",
+  Tissue == "Cerebellum" ~ "Cerebellum",
+  Tissue == "Cerebellum Nucleus" ~ "Cerebellum TN"
+  )) %>% 
+  ggplot(aes(x = xvar, y = yvar)) + 
+    xlab(u.axis.labs[1]) + 
+    ylab(u.axis.labs[2]) +
+    coord_equal() +
+    # geom_segment(data = df.v,
+    #              aes(x = 0, y = 0, xend = xvar, yend = yvar),
+    #              arrow = arrow(length = unit(1/2, 'picas')), col = "#FFFFFF") +
+    geom_point(size = 2) + 
+    geom_text_repel(aes(label = Tissue), size = 5) +
+    # geom_text(data = df.v, 
+    #           aes(label = varname, x = xvar, y = yvar, 
+    #               angle = angle, hjust = hjust), 
+    #           color = 'darkred', size = varname.size) + 
+    # scale_color_manual(values = c("#307EC2", "#B63F3E", "#bdbdbd")) + 
+    theme_bw(18) + 
+    theme(plot.background = element_rect(fill='transparent', color=NA),
+          panel.background = element_rect(fill='transparent'),
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank())
+    
 
-ggsave(paste(figure.dir, "extended-data-figure-4a.png"), width = 12, height = 8, dpi = 300)
+ggsave(paste(figure.dir, "extended-data-figure-6a.png"), width = 12, height = 8, dpi = 300)
 
 ```
 

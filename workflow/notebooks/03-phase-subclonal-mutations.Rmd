@@ -664,7 +664,7 @@ At this stage in the analysis, we've phased mutations into rough haplotypes. We'
 
 Let's visualize all of these mutations in each tissue specimen. Mutations are annotated by whether they're `Genome 1`, `Genome 2`, or a 'Driver' mutations. These 'Drivers' are mutations with impacts similar to mutations that have been observed in previous cases of SSPE. 
 
-```{r Figure 4, fig.align='center', fig.width=14, fig.height=7, echo=FALSE}
+```{r Figure 5, fig.align='center', fig.width=14, fig.height=7, echo=FALSE}
 
 # For simplicity, rename the data frame
 labeled.df = updated.haplotype.df
@@ -707,7 +707,7 @@ expanded_tissue_order = c(
 )
 
 # Format the data for plotting
-figure_4.df = labeled.df %>% 
+figure_5.df = labeled.df %>% 
   mutate(Genotype = case_when(
     Haplotype == "genome-1" ~ "G-1", 
     Haplotype == "genome-1-1" ~ "G-1",
@@ -729,13 +729,13 @@ figure_4.df = labeled.df %>%
     TRUE ~ Tissue
   ))
 
-core.snps = figure_4.df %>% 
+core.snps = figure_5.df %>% 
   filter(Genotype != 'subclonal' & Driver == "")
 
-subclonal.snps = figure_4.df %>% 
+subclonal.snps = figure_5.df %>% 
   filter(Genotype == 'subclonal' & Driver == "")
 
-driver.snps = figure_4.df %>% 
+driver.snps = figure_5.df %>% 
   filter(Driver != "")
 
 # Make figure 4b of the paper
@@ -751,7 +751,7 @@ ggplot(data = core.snps, aes(x = factor(Tissue, levels = (expanded_tissue_order)
   theme_bw(20) +
   theme(axis.text.x = element_text(angle = 35, hjust=1)) 
   
-ggsave(paste(figure.dir, "figure-4.png"), width = 14, height = 7, dpi = 300)
+ggsave(paste(figure.dir, "figure-5.png"), width = 14, height = 7, dpi = 300)
 
 ```
 
@@ -761,9 +761,9 @@ What are the SNPs we're calling 'Genome 1 (G1)'. These will be different than th
 
 In the previous notebook, we noticed a set of mutations that made up a haplotype that arises on the background of `Genome 1`, but it mostly missing from the Frontal Cortex 2 sample. We called this haplotype `Genome-1-1`, and it's very significant because it's indicative some early divergence in the frontal cortex. Let's take a look at this haplotype in every tissue.
 
-```{r Figure 5 Without G-FC2, fig.align='center', fig.width=15, fig.height=7, echo=FALSE}
+```{r Figure 6 Without G-FC2, fig.align='center', fig.width=15, fig.height=7, echo=FALSE}
 
-figure.5.df = labeled.df %>% 
+figure.6.df = labeled.df %>% 
   mutate(Genotype = case_when(
     Haplotype == "genome-1" ~ "G-01", 
     Haplotype == "genome-1-1" ~ "G-01 subcluster",
@@ -778,10 +778,10 @@ figure.5.df = labeled.df %>%
   # There is one SNP missing only from the FC2 due to coverage, add this back in with AF as 0
   add_row(Tissue = "Frontal Cortex 2", AF=0, Genotype = "G-01 subcluster", POS = 15084)
 
-subclonal.background = figure.5.df %>% 
+subclonal.background = figure.6.df %>% 
   filter(Genotype == "subclonal")
 
-main.genotypes = figure.5.df %>% 
+main.genotypes = figure.6.df %>% 
   filter(Genotype != "subclonal")
 
 main.genotypes %>% 
@@ -796,7 +796,7 @@ main.genotypes %>%
     theme_bw(18) +
     theme(legend.position="bottom")
   
-ggsave(paste(figure.dir, "figure-5-without-GFC2.png"), width = 15, height = 8, dpi = 300)
+# ggsave(paste(figure.dir, "figure-6-without-GFC2.png"), width = 15, height = 8, dpi = 300)
 
 ```
 
