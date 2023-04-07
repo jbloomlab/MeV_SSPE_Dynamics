@@ -28,7 +28,7 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ## List of all packages needed
 
-packages = c("tidyverse", "UpSetR", "ComplexHeatmap", "cluster", "ggrepel", "gridExtra", 'grid', 'RColorBrewer')
+packages = c("tidyverse", "UpSetR", "ComplexHeatmap", "cluster", "ggrepel", "gridExtra", 'grid', 'RColorBrewer', 'scatterpie')
 ## Check that packages are installed, if not, install them
 installed_packages <- packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
@@ -99,6 +99,8 @@ First, I do a PCA analysis on the frequency of mutations in each compartment to 
 
 # Final set of haplotype assignments
 updated.df = read_csv(updated.data, show_col_types = F) %>% 
+  # Remove SSPE 1 and SSPE 2 since no spatial info is known 
+  filter(!Tissue %in% c("SSPE 1", "SSPE 2")) %>% 
   # For consistency, change the names of G1, G2, and G-1-1
   mutate(Haplotype = case_when(
     Haplotype == "genome-1" ~ "genome 01",
@@ -195,8 +197,8 @@ ggplot(data = df.u, aes(x = xvar, y = yvar)) +
   geom_segment(data = df.v,
                aes(x = 0, y = 0, xend = xvar, yend = yvar),
                arrow = arrow(length = unit(1/2, 'picas')), col = "#FFFFFF") +
-  geom_point(size = 1.5) + 
-  geom_text_repel(aes(label = Tissue)) +
+  geom_point(size = 2) + 
+  geom_text_repel(aes(label = Tissue), size = 5) +
   # geom_text(data = df.v, 
   #           aes(label = varname, x = xvar, y = yvar, 
   #               angle = angle, hjust = hjust), 
@@ -206,7 +208,6 @@ ggplot(data = df.u, aes(x = xvar, y = yvar)) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 ggsave(paste(figure.dir, "extended-data-figure-4a.png"), width = 12, height = 8, dpi = 300)
-
 
 ```
 
@@ -313,8 +314,146 @@ ggplot(data = df.u, aes(x = xvar, y = yvar)) +
 
 Another way of visualizing the distributions of genotypes over space is to plot the fraction of each sample that belongs to a given haplotype. These can be plotted as a pie chart where the centroid of the pie chart is the rough location of the sample in the brain. I'll make this plot below. 
 
+```{r Format Data for Pie Charts}
+
+# Get the haplotype names for each SNP
+haplotypes.SNP.label = updated.df %>% 
+  select(Background, Haplotype, SNP) %>% 
+  distinct()
+
+# Expand the haplotyped SNPs to have records for all tissues
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP",)), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., distinct(select(updated.df, c("SNP", "POS"))), by = c("SNP")) %>% 
+  left_join(., haplotypes.SNP.label, by = "SNP") 
+
+# Calculate the mean haplotype frequency across each tissue
+haplotype.mean = expanded.df %>% 
+  group_by(Tissue, Haplotype, Background) %>% 
+  summarize(AF = mean(AF))
+
+# Rename to cluster names we've chosen 
+haplotype.mean = haplotype.mean %>% 
+  mutate(Haplotype = case_when(
+    Haplotype == "cluster 1" ~  "cluster 1",
+    Haplotype == "cluster 2" ~  "cluster 2",
+    Haplotype == "cluster 3" ~  "cluster 3",
+    Haplotype == "cluster 4" ~  "cluster 4",
+    Haplotype == "cluster 5" ~  "cluster 1a",
+    Haplotype == "cluster 6" ~  "G-FC2",
+    Haplotype == "cluster 7" ~  "cluster 5",
+    Haplotype == "cluster 8" ~  "cluster 6",
+    Haplotype == "cluster 9" ~  "cluster 7",
+    Haplotype == "cluster 10" ~  "cluster 8",
+    Haplotype == "cluster 11" ~  "cluster 9",
+    Haplotype == "cluster 12" ~  "cluster 10",
+    Haplotype == "cluster 13" ~  "cluster 11",
+    Haplotype == "genome 01" ~  "G-01",
+    Haplotype == "genome 1" ~  "G-1",
+    Haplotype == "genome 2" ~  "G-2",
+    TRUE ~ Haplotype))
+
+# Colors for these cluster names
+haplotype.colors =  c("#000000", "#E1EAF6",  "#A6C9DF", "#7AADD2","#5691C1", "#3871B0", "#67649F", "#8484B1", "#FFFCBA", "#F9D984", "#F4B460", "#EE9B4F", "#DE4B32", "grey")
+names(haplotype.colors) = c("G-FC2", "cluster 1", "cluster 1a", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 9", "cluster 10", "cluster 11", "unknown")
+
+
+# Keep only the clusters and fill the rest in with unknown 
+cluster.frequencies = haplotype.mean %>% 
+  select(!Background) %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>%
+  mutate(`cluster 1` = `cluster 1` - `cluster 1a`) %>% 
+  mutate(`cluster 1` = if_else(`cluster 1` < 0, 0, `cluster 1`)) %>% 
+  pivot_longer(cols = -c(Tissue), names_to = "Haplotype", values_to = "AF") %>% 
+  filter(!Haplotype %in% c("G-1", "G-2", "G-01")) %>% 
+  ungroup()
+
+# Add in a row for unaccounted for % in each tissue sample
+unknown.frequency = cluster.frequencies %>% 
+  group_by(Tissue) %>% 
+  summarize(AF = 1 - sum(AF)) %>% 
+  mutate(Haplotype = "unknown") %>% 
+  ungroup()
+
+# Join back to the data
+cluster.frequencies = cluster.frequencies %>% 
+  add_row(unknown.frequency) 
+
+# Read in the coordinates of each tissue and add to the plot
+brain.coordinates.df = read_csv("brain-coordinates.csv", show_col_types = F)
+cluster.frequencies = cluster.frequencies %>% 
+  full_join(., brain.coordinates.df, by = "Tissue")
+
+# Finally, add in the size categories
+cluster.frequencies = cluster.frequencies %>% 
+  mutate(Size = case_when(
+    Tissue == "Frontal Cortex 1" ~ "large",
+    Tissue == "Frontal Cortex 2" ~ "large",
+    Tissue == "Frontal Cortex 3" ~ "medium",
+    Tissue == "Parietal Lobe" ~ "large",
+    Tissue == "Occipital Lobe" ~ "medium",
+    Tissue == "Temporal Lobe" ~ "medium",
+    Tissue == "Upper Brain Stem" ~ "small",
+    Tissue == "Brain Stem" ~ "small",
+    Tissue == "Midbrain" ~ "small",
+    Tissue == "Hippocampus" ~ "medium",
+    Tissue == "Internal Capsule" ~ "small",
+    Tissue == "Cerebellum" ~ "small",
+    Tissue == "Cerebellum Nucleus" ~ "small"
+  ))
+  
+```
+
 ```{r Spatial Pie Chart}
 
+# Haplotype Order
+haplotype.order = c("G-FC2",
+                    "cluster 1",
+                    "cluster 1a",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11", 
+                    "unknown")
+
+# Create the plot
+cluster.frequencies.wide = cluster.frequencies %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>% 
+  mutate(Size = case_when(
+    Size == "small" ~ 1, 
+    Size == "medium" ~ 2, 
+    Size == "large" ~ 3
+  ))
+
+# Reorder based on the haplotype ordering
+cluster.frequencies.wide = cluster.frequencies.wide[, c("Tissue", "x", "y", "Size", haplotype.order)]
+
+# Plot the scatterplots
+ggplot() +
+    geom_scatterpie(aes(x=x, y=y, r=Size*2.5, group=Tissue), 
+                    cols=haplotype.order,
+                    data=cluster.frequencies.wide) +
+    coord_equal() + 
+    scale_fill_manual(values = haplotype.colors) + 
+    theme_void() + 
+    theme(legend.title = element_blank(),
+          legend.position = c(1.15, 0.5), 
+          legend.margin = margin(0, -25, 0, 0), 
+          plot.margin = margin(5, 50, 5, 5, "pt"),
+          plot.background = element_rect(fill='transparent', color=NA))
+
+ggsave(paste(figure.dir, "figure-8.png"), width = 8, height = 4, dpi = 300)
 
 
 ```
