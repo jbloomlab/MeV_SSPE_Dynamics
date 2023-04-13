@@ -378,9 +378,8 @@ haplotype.mean = haplotype.mean %>%
     TRUE ~ Haplotype))
 
 # Colors for these cluster names
-haplotype.colors =  c("#000000", "#E1EAF6",  "#A6C9DF", "#7AADD2","#5691C1", "#3871B0", "#67649F", "#8484B1", "#FFFCBA", "#F9D984", "#F4B460", "#EE9B4F", "#DE4B32", "grey")
-names(haplotype.colors) = c("G-FC2", "cluster 1", "cluster 1a", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 9", "cluster 10", "cluster 11", "unknown")
-
+haplotype.colors =  c("#000000", "#E1EAF6",  "#A6C9DF", "#7AADD2","#5691C1", "#3871B0", "#67649F", "#8484B1", "#FFFCBA", "#F9D984", "#F4B460", "#EE9B4F", "#DE4B32", "#22488F", "#B02B23")
+names(haplotype.colors) = c("G-FC2", "cluster 1", "cluster 1a", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 9", "cluster 10", "cluster 11", "G-1 unknown", "G-2 unknown")
 
 # Keep only the clusters and fill the rest in with unknown 
 cluster.frequencies = haplotype.mean %>% 
@@ -393,12 +392,46 @@ cluster.frequencies = haplotype.mean %>%
   filter(!Haplotype %in% c("G-1", "G-2", "G-01")) %>% 
   ungroup()
 
-# Add in a row for unaccounted for % in each tissue sample
+# Get the background of each haplotype
+backgrounds = haplotype.mean %>%
+  filter(!Haplotype %in% c("G-1", "G-2", "G-01")) %>%
+  ungroup() %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  select(Haplotype, Background) %>% 
+  distinct() %>% 
+  mutate(Background = case_when(
+    Background == "genome-1" ~ "G-01",
+    Background == "genome-2" ~  "G-2",
+    TRUE ~ Background))
+
+# Mean G1/G2 frequency in each tissue sample
+g1.g2.frequency = haplotype.mean %>% 
+  select(!Background) %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>%
+  mutate(`cluster 1` = `cluster 1` - `cluster 1a`) %>% 
+  mutate(`cluster 1` = if_else(`cluster 1` < 0, 0, `cluster 1`)) %>% 
+  pivot_longer(cols = -c(Tissue), names_to = "Haplotype", values_to = "AF") %>% 
+  filter(Haplotype %in% c("G-2", "G-01")) %>%
+  ungroup() %>%
+  group_by(Tissue) %>%
+  mutate(Backgound_AF = AF / sum(AF)) %>% 
+  select(!AF) %>% 
+  rename(Background = Haplotype)
+
+# Add in a row for unaccounted genome-1 % in each tissue sample
 unknown.frequency = cluster.frequencies %>% 
-  group_by(Tissue) %>% 
-  summarize(AF = 1 - sum(AF)) %>% 
-  mutate(Haplotype = "unknown") %>% 
-  ungroup()
+  left_join(., backgrounds, by="Haplotype") %>% 
+  group_by(Tissue, Background) %>% 
+  summarize(AF = sum(AF)) %>% 
+  left_join(., g1.g2.frequency, by=c("Background", "Tissue")) %>% 
+  mutate(AF = Backgound_AF - AF) %>% 
+  mutate(Haplotype = case_when(
+    Background == "G-01" ~ "G-1 unknown",
+    Background == "G-2" ~ "G-2 unknown",
+  )) %>% 
+  ungroup() %>% 
+  select(!c("Background", "Backgound_AF"))
 
 # Join back to the data
 cluster.frequencies = cluster.frequencies %>% 
@@ -440,19 +473,20 @@ haplotype.order = c("G-FC2",
                     "cluster 4",
                     "cluster 5",
                     "cluster 6",
+                    "G-1 unknown",
                     "cluster 7",
                     "cluster 8",
                     "cluster 9",
                     "cluster 10",
                     "cluster 11", 
-                    "unknown")
+                    "G-2 unknown")
 
 # Create the plot
 cluster.frequencies.wide = cluster.frequencies %>% 
   pivot_wider(names_from = Haplotype, values_from = AF) %>% 
   mutate(Size = case_when(
-    Size == "small" ~ 1, 
-    Size == "medium" ~ 2, 
+    Size == "small" ~ 1.4, 
+    Size == "medium" ~ 2.3, 
     Size == "large" ~ 3
   ))
 
@@ -461,9 +495,10 @@ cluster.frequencies.wide = cluster.frequencies.wide[, c("Tissue", "x", "y", "Siz
 
 # Plot the scatterplots
 ggplot() +
-    geom_scatterpie(aes(x=x, y=y, r=Size*2.5, group=Tissue), 
+    geom_scatterpie(aes(x=x, y=y, r=Size*2.7, group=Tissue), 
                     cols=haplotype.order,
-                    data=cluster.frequencies.wide) +
+                    data=cluster.frequencies.wide,
+                    color = NA) +
     coord_equal() + 
     scale_fill_manual(values = haplotype.colors) + 
     theme_void() + 
@@ -473,7 +508,7 @@ ggplot() +
           plot.margin = margin(5, 50, 5, 5, "pt"),
           plot.background = element_rect(fill='transparent', color=NA))
 
-ggsave(paste(figure.dir, "figure-8.png"), width = 8, height = 4, dpi = 300)
+ggsave(paste(figure.dir, "figure-7b-less-size-range.png"), width = 8, height = 4, dpi = 300)
 
 
 ```

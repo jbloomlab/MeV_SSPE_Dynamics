@@ -625,10 +625,9 @@ gene_order = c("N", "P", "M", "F", "H", "L")
 # Define the order of haplotypes on the y-axis
 figure.haplotype.order = c("SSPE Ancestor",
                             "G-01",
-                            "G-01 subcluster a",
                             "G-FC2",
-                            "G-01 subcluster b",
                             "G-1",
+                            "G-2",
                             "cluster 1",
                             "cluster 1a",
                             "cluster 2",
@@ -636,7 +635,6 @@ figure.haplotype.order = c("SSPE Ancestor",
                             "cluster 4",
                             "cluster 5",
                             "cluster 6",
-                            "G-2",
                             "cluster 7",
                             "cluster 8",
                             "cluster 9",
@@ -660,34 +658,6 @@ ancestral.snps = read_csv(ancestral.data, show_col_types = FALSE) %>%
   mutate(Haplotype = "SSPE Ancestor",
          Background = "SSPE Ancestor")
 
-# Genome-1 SNPS
-g1.snps = labeled.df %>% 
-  filter(Haplotype %in% c("genome-1", "genome-1-1")) %>% 
-  select(Background, Haplotype, Gene, Effect, POS, REF, ALT) %>% 
-  mutate(Gene = if_else(Gene == "P/V/C", "P", Gene)) %>% 
-  mutate(Effect = if_else(is.na(Effect), "Synonymous", Effect)) %>% 
-  mutate(ADAR = case_when(
-    REF == 'T' & ALT == 'C' ~ TRUE, 
-    REF == 'A' & ALT == 'G' ~ TRUE,
-    TRUE ~ FALSE
-  )) %>%  
-  mutate(Haplotype = "G-1") %>% 
-  distinct() 
-
-# Genome-FC2 SNPS
-gFC2.snps = labeled.df %>% 
-  filter(Haplotype %in% c("cluster 6", "genome-1")) %>% 
-  select(Background, Haplotype, Gene, Effect, POS, REF, ALT) %>% 
-  mutate(Gene = if_else(Gene == "P/V/C", "P", Gene)) %>% 
-  mutate(Effect = if_else(is.na(Effect), "Synonymous", Effect)) %>% 
-  mutate(ADAR = case_when(
-    REF == 'T' & ALT == 'C' ~ TRUE, 
-    REF == 'A' & ALT == 'G' ~ TRUE,
-    TRUE ~ FALSE
-  )) %>%  
-  mutate(Haplotype = "G-FC2") %>% 
-  distinct() 
-
 # Prepare the data for plotting
 distribution.df = labeled.df %>% 
   select(Background, Haplotype, Gene, Effect, POS, REF, ALT) %>% 
@@ -700,8 +670,8 @@ distribution.df = labeled.df %>%
   )) %>%  
   mutate(Haplotype = case_when(
     Haplotype == "genome-1" ~ "G-01",
-    Haplotype == "genome-1-1" ~ "G-01 subcluster b",
-    Haplotype == "cluster 6" ~ "G-01 subcluster a",
+    Haplotype == "genome-1-1" ~ "G-1",
+    Haplotype == "cluster 6" ~ "G-FC2",
     Haplotype == "genome-2" ~ "G-2",
     Haplotype == "cluster 1" ~  "cluster 1",
     Haplotype == "cluster 2" ~  "cluster 2",
@@ -719,14 +689,12 @@ distribution.df = labeled.df %>%
   )) %>% 
   distinct()  %>% 
   filter(!Haplotype %in% c('subclonal', 'both')) %>% 
-  rbind(., ancestral.snps) %>%
-  rbind(., g1.snps) %>%
-  rbind(., gFC2.snps) 
+  rbind(., ancestral.snps)
 
 
 # Haplotype Colors
-haplotype.colors =  c("#000000", "#87CEEB", "magenta", "#22488F", "#B02B23", "#113061" , "purple" , "dark grey",  "dark grey", "dark grey", "dark grey", "dark grey", "dark grey", "dark grey" ,"dark grey", "dark grey", "dark grey", "dark grey", "dark grey")
-names(haplotype.colors) = c("SSPE Ancestor", "G-01", "G-FC2", "G-1", "G-2", "G-01 subcluster b", "G-01 subcluster a", "cluster 1", "cluster 1a", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 9", "cluster 10", "cluster 11")
+haplotype.colors =  c("#000000", "dark grey", "dark grey", "dark grey", "dark grey", "dark grey", "dark grey", "dark grey",  "dark grey", "dark grey", "dark grey", "dark grey", "dark grey", "dark grey" ,"dark grey", "dark grey", "dark grey", "dark grey", "dark grey")
+names(haplotype.colors) = c("SSPE Ancestor", "G-01", "G-FC2", "G-1", "G-2", "cluster 1", "cluster 1a", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 9", "cluster 10", "cluster 11")
 
 # Plot the distribution of mutations
 distribution.df %>% 
@@ -796,8 +764,7 @@ distribution.df %>%
     theme(axis.title.y = element_blank()) +
     theme(legend.position = "bottom")  
 
-ggsave(paste(figure.dir, "figure-7.png", sep=""), width = 15, height = 10, dpi = 300)
-
+ggsave(paste(figure.dir, "figure-7a.png", sep=""), width = 15, height = 10, dpi = 300)
 ```
 
 Finally, I'll write out these validated and renamed clusters to a new file. 
