@@ -627,7 +627,6 @@ figure.haplotype.order = c("SSPE Ancestor",
                             "G-01",
                             "G-FC2",
                             "G-1",
-                            "G-2",
                             "cluster 1",
                             "cluster 1a",
                             "cluster 2",
@@ -635,6 +634,7 @@ figure.haplotype.order = c("SSPE Ancestor",
                             "cluster 4",
                             "cluster 5",
                             "cluster 6",
+                            "G-2",
                             "cluster 7",
                             "cluster 8",
                             "cluster 9",
@@ -765,6 +765,8 @@ distribution.df %>%
     theme(legend.position = "bottom")  
 
 ggsave(paste(figure.dir, "figure-7a.png", sep=""), width = 15, height = 10, dpi = 300)
+
+
 ```
 
 Finally, I'll write out these validated and renamed clusters to a new file. 
