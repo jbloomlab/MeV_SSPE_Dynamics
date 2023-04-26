@@ -41,10 +41,10 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
-  updated.data = snakemake@input[["1"]]
+  updated.data = snakemake@params[["incsv"]] 
   
   # Phylogeny 
-  phylo.data =  snakemake@input[["2"]]
+  phylo.data =  snakemake@input[["tree"]]
 
 } else {
 
@@ -65,8 +65,7 @@ if (exists("snakemake")) {
 if (exists("snakemake")) {
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
-  
+  figure.dir = paste0(snakemake@params[['figures']], "/")
   
 } else {
 
@@ -93,8 +92,8 @@ I took the sequences for each of these haplotypes and generated a phylogenetic t
 ```{r Import Data, echo=F}
 
 # Assigned SNPs with haplotype labels 
-updated.df = read_csv(updated.data, show_col_types = FALSE) %>% 
-  mutate(Haplotype = case_when(
+updated.df = readr::read_csv(updated.data, show_col_types = FALSE) %>% 
+  dplyr::mutate(Haplotype = case_when(
     Haplotype == "cluster 1" ~  "cluster 1",
     Haplotype == "cluster 2" ~  "cluster 2",
     Haplotype == "cluster 3" ~  "cluster 3",
@@ -116,13 +115,13 @@ updated.df = read_csv(updated.data, show_col_types = FALSE) %>%
 # Get the background of the haplotypes
 background.label = updated.df %>% 
   select(Haplotype, Background) %>% 
-  filter(!Haplotype %in% c("subclonal", "G-2", "G-01", "G-1", "both")) %>% 
+  dplyr::filter(!Haplotype %in% c("subclonal", "G-2", "G-01", "G-1", "both")) %>% 
   mutate(Haplotype = str_replace(Haplotype, " ", "_")) %>% 
   distinct()
 
 # Mutation counts 
 mutation.counts = updated.df %>% 
-  filter(!Haplotype %in% c('subclonal', 'fixed', 'both')) %>% 
+  dplyr::filter(!Haplotype %in% c('subclonal', 'fixed', 'both')) %>% 
   select(POS, REF, ALT, Haplotype) %>% 
   distinct() %>% 
   group_by(Haplotype) %>% 

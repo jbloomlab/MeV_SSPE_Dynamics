@@ -41,10 +41,13 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
-  updated.data = snakemake@input[["1"]]
+  updated.data = snakemake@params[['incsv']]
+
+  # Spruce 
+  spruce.data = snakemake@input[[1]]
   
-  # Phylogeny 
-  phylo.data =  snakemake@input[["2"]]
+  # Counts of all reads bridging pairs of SNP positions
+  bridging.data = snakemake@input[[2]]
 
 } else {
 
@@ -68,12 +71,11 @@ if (exists("snakemake")) {
 if (exists("snakemake")) {
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
   
-    # Path to save the polished assigned variants
+  # Path to save the polished assigned variants
   output.path = snakemake@params[['final_tree']]
 
-  
 } else {
 
   # Path to save figures

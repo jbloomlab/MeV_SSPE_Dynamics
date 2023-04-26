@@ -1,12 +1,9 @@
 channels:
-  - anaconda
+  - conda-forge
   - bioconda
 dependencies:
-  - iqtree
-  - blast
-  - mafft
-  - python
-  - biopython
-  - pandas 
-  - numpy
+  - python==3.10.5
+  - pandas
   - jupyterlab
+  - iqtree
+  - biopython

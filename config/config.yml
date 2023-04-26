@@ -28,6 +28,8 @@ MeVChiTok:
   gff: ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/854/845/GCF_000854845.1_ViralProj15025/GCF_000854845.1_ViralProj15025_genomic.gff.gz
   contig: MeVChiTok
   annotations: config/annotations.csv
+  drivers: config/driver_mutations.csv
+  brain_coords: config/brain-coordinates.csv
 
 # Human reference genome
 human:
@@ -71,6 +73,8 @@ split_dir: results/split
 bridging_dir: results/bridging
 notebook_dir: results/notebooks
 spruce_dir: results/spruce
+phylogeny_dir: results/phylogeny
+figure_dir: results/figures
 
 # ++ Config Directories ++ #
 tools: config/tools

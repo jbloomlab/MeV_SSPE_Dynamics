@@ -44,10 +44,10 @@ if (exists("snakemake")) {
   updated.data = snakemake@params[["incsv"]]
 
   # Depth per position
-  merged.depth = snakemake@input[[2]]
+  merged.depth = snakemake@input[[1]]
   
   # Original unfiltered variant calls
-  variant.data = snakemake@params[['oldvariants']]
+  variant.data = snakemake@params[['rawvariants']]
 
 } else {
 
@@ -74,7 +74,7 @@ if (exists("snakemake")) {
   machina.input.data = snakemake@params[["spruce"]]
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
   
 } else {
 

@@ -1,0 +1,6 @@
+name: spruce
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - machina

@@ -78,7 +78,7 @@ if (exists("snakemake")) {
   output.path = snakemake@params[['outcsv']]
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
 
 } else {
   
@@ -187,6 +187,20 @@ cluster.snps <- function(list.of.snps, snp.df, n.clusters) {
     left_join(., kclusters.df, by = "SNP") %>% 
     mutate(cluster = if_else(is.na(cluster), "no cluster", as.character(cluster)))
   
+  # Sort the cluster names by mean frequency 
+  cluster.order = kmedoids.SNPs %>% 
+    group_by(cluster) %>% 
+    summarize(AF = mean(AF)) %>% 
+    arrange(-AF) %>% 
+    mutate(order = 1:n.clusters) %>% 
+    select(cluster, order)
+  kmedoids.SNPs = kmedoids.SNPs %>% 
+    left_join(., cluster.order, by = "cluster") %>% 
+    select(!cluster) %>% 
+    rename(cluster = order) %>% 
+    mutate(cluster = as.character(cluster))
+  
+  # Add the number of SNPs per cluster
   n.clusters.per.snp = kmedoids.SNPs %>% 
     select(SNP, cluster) %>%
     distinct() %>% 
@@ -220,10 +234,12 @@ twentyfive.percent.or.more.clusters.df = cluster.snps(list.of.snps = twentyfive.
                                                       snp.df = expanded.df, 
                                                       n.clusters = 20)
 
+
 # Mean of each tissue ~ for plotting
 twentyfive.percent.or.more.clusters.mean = twentyfive.percent.or.more.clusters.df %>% 
   group_by(Tissue, cluster, cluster_size, n) %>% 
-  summarize(AF = mean(AF))
+  summarize(AF = mean(AF)) 
+
 
 # Plot the clusters
 twentyfive.percent.or.more.clusters.df %>% 
@@ -268,7 +284,7 @@ expanded.df %>%
 
 ```
 
-Cluster 18 (L-A15084G) is a mutation in `Genome-1-1` that was too low frequency to be called in the `Frontal Cortex 2` sample. Cluster 6 (M-C4502T) is mutation that's part of `Genome-2` but was too low coverage in the `Cerebellum`. Finally, Cluster 9 (M-C4573T) is a mutation in `Genome-1` that was also too low coverage in the `Cerebellum`. Generally, the `Cerebellum` has the lowest coverage of any tissue, so this isn't surprising. All-in-all, this adds three mutations to already existing haplotypes. I already addressed F-C7036T, N-G810A, and H-T7293C in the `identify-backgrounds.Rmd` notebook. Finally, M-C4532T might also belong as part of the reference?
+Cluster 5 (L-A15084G) is a mutation in `Genome-1-1` that was too low frequency to be called in the `Frontal Cortex 2` sample. Cluster 6 (M-C4502T) is mutation that's part of `Genome-2` but was too low coverage in the `Cerebellum`. Finally, Cluster 9 (M-C4573T) is a mutation in `Genome-1` that was also too low coverage in the `Cerebellum`. Generally, the `Cerebellum` has the lowest coverage of any tissue, so this isn't surprising. All-in-all, this adds three mutations to already existing haplotypes. I already addressed F-C7036T, N-G810A, and H-T7293C in the `identify-backgrounds.Rmd` notebook. Finally, M-C4532T might also belong as part of the reference?
 
 I'll annotate these variants in the main data frame.
 
@@ -276,13 +292,13 @@ I'll annotate these variants in the main data frame.
 
 # Clusters that are clearly genome-1 
 genome.1.missing.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(8)) %>% 
+  filter(cluster %in% c(4)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # Clusters that are clearly genome-1-1
 genome.1.1.missing.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(14)) %>% 
+  filter(cluster %in% c(5)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -294,7 +310,7 @@ genome.2.missing.snps = twentyfive.percent.or.more.clusters.df %>%
 
 # Clusters that break the rules 
 maybe.in.both.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(12, 11, 2, 7)) %>% 
+  filter(cluster %in% c(3, 7, 2, 1)) %>% 
   pull(SNP) %>% 
   unique(.)
 
@@ -341,53 +357,53 @@ All of these look like reasonable clusters, so I'll annotate the variant data fr
 ```{r Annotate Multi SNP Clusters, fig.align='center', fig.width=19, fig.height=10, echo=T}
 
 cluster.1.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(1)) %>% 
+  filter(cluster %in% c(8)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 # The missing SNPs in Cerebellum are due to coverage
 cluster.2.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(19, 4)) %>% 
+  filter(cluster %in% c(11, 14)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.3.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(16)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-cluster.4.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(10)) %>% 
   pull(SNP) %>% 
   unique(.)
 
-cluster.5.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(20)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-cluster.6.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(17)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-cluster.7.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(3)) %>% 
-  pull(SNP) %>% 
-  unique(.)
-
-cluster.8.snps = twentyfive.percent.or.more.clusters.df %>% 
+cluster.4.snps = twentyfive.percent.or.more.clusters.df %>% 
   filter(cluster %in% c(13)) %>% 
   pull(SNP) %>% 
   unique(.)
 
+cluster.5.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(15)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+cluster.6.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(16)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+cluster.7.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(17)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
+cluster.8.snps = twentyfive.percent.or.more.clusters.df %>% 
+  filter(cluster %in% c(18)) %>% 
+  pull(SNP) %>% 
+  unique(.)
+
 cluster.9.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(5)) %>% 
+  filter(cluster %in% c(19)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.10.snps = twentyfive.percent.or.more.clusters.df %>% 
-  filter(cluster %in% c(18)) %>% 
+  filter(cluster %in% c(20)) %>% 
   pull(SNP) %>% 
   unique(.)
   
@@ -425,7 +441,6 @@ twentyfive.percent.or.fewer.clusters.df = cluster.snps(list.of.snps = twentyfive
                                       snp.df = expanded.df, 
                                       n.clusters = 40)
 
-
 # Mean of each tissue
 twentyfive.percent.or.fewer.clusters.mean = twentyfive.percent.or.fewer.clusters.df %>% 
   group_by(Tissue, cluster, cluster_size, n) %>% 
@@ -453,7 +468,7 @@ Most of these aren't very obviously clusters that represent true haplotypes. The
 
 ```{r Promising low-frequency clusters, fig.align='center', fig.width=19, fig.height=10, echo=F}
 
-promising.subclonal.clusters = c(20, 21, 27, 25)
+promising.subclonal.clusters = c(15, 4, 14, 12)
 
 twentyfive.percent.or.fewer.clusters.df %>% 
   filter(cluster %in% promising.subclonal.clusters) %>% 
@@ -474,22 +489,22 @@ twentyfive.percent.or.fewer.clusters.df %>%
 ```{r Annotate Remaining Clusters, echo = T}
 
 cluster.11.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(20)) %>% 
+  filter(cluster %in% c(15)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.12.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(21)) %>% 
+  filter(cluster %in% c(4)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.13.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(27)) %>% 
+  filter(cluster %in% c(14)) %>% 
   pull(SNP) %>% 
   unique(.)
 
 cluster.14.snps = twentyfive.percent.or.fewer.clusters.df %>% 
-  filter(cluster %in% c(25)) %>% 
+  filter(cluster %in% c(12)) %>% 
   pull(SNP) %>% 
   unique(.)
 

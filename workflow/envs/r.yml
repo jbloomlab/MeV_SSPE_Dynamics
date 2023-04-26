@@ -17,3 +17,9 @@ dependencies:
   - r-data.table
   - r-ggnetwork
   - r-network
+  - r-rcolorbrewer
+  - r-tidytree
+  - r-phytools
+  - bioconductor-ggtree
+  - bioconductor-treeio
+  - r-scatterpie

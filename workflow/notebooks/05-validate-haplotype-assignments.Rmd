@@ -50,7 +50,7 @@ if (exists("snakemake")) {
   annotations.filepath = snakemake@params[["annotations"]]
 
   # Counts of all reads bridging *all* pairs of SNP positions
-  bridging.data = snakemake@params[["bridging"]]
+  bridging.data = snakemake@input[[1]]
   
   # 'Ancestral' mutation included in the reference
   ancestral.data = snakemake@params[['ancestral']]
@@ -87,7 +87,7 @@ if (exists("snakemake")) {
   output.path = snakemake@params[["outcsv"]]
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
   
 } else {
 

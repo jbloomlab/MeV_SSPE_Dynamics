@@ -46,12 +46,19 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
-  updated.data = snakemake@input[["1"]]
+  updated.data = snakemake@params[["incsv"]]
+  
+  # Brain coordinates for plotting spatial heatmap
+  brain.coords = snakemake@params[["brain_coords"]]
 
 } else {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
   updated.data = "../../results/variants/validated_variants.csv"
+  
+  # Brain coordinates for plotting spatial heatmap
+  brain.coords = "../../config/brain-coordinates.csv"
+
 
 }
 
@@ -64,12 +71,12 @@ if (exists("snakemake")) {
 if (exists("snakemake")) {
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
   
 } else {
   
   # Path to save figures
-  figure.dir = "../../results/figures/"
+  figure.dir ="../../results/figures/"
 
 }
 
@@ -438,7 +445,7 @@ cluster.frequencies = cluster.frequencies %>%
   add_row(unknown.frequency) 
 
 # Read in the coordinates of each tissue and add to the plot
-brain.coordinates.df = read_csv("brain-coordinates.csv", show_col_types = F)
+brain.coordinates.df = read_csv(brain.coords, show_col_types = F)
 cluster.frequencies = cluster.frequencies %>% 
   full_join(., brain.coordinates.df, by = "Tissue")
 

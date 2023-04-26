@@ -81,7 +81,7 @@ if (exists("snakemake")) {
   output.path = snakemake@params[['outcsv']]
 
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
   
 } else {
   
@@ -274,6 +274,8 @@ masked.shared.positions = haplotype.labels %>%
 
 # Filter the bridging read pairs 
 labled.bridging.df = bridging.df %>% 
+  # Mask the shared position 
+  filter(!snp_1 %in% masked.shared.positions, !snp_2 %in% masked.shared.positions) %>% 
   # Add the snp_1 haplotype label
   left_join(., dplyr::rename(haplotype.labels, snp_1 = POS, hap_1 = Haplotype)) %>% 
   # Add the snp_2 haplotype label
@@ -284,8 +286,6 @@ labled.bridging.df = bridging.df %>%
   filter(hap_1 %in% c("genome-1", "genome-2") | hap_2 %in% c("genome-1", "genome-2")) %>% 
   # We don't want cases with only genome 1 or genome 2
   filter(!(hap_1 %in% c("genome-1", "genome-2") & hap_2 %in% c("genome-1", "genome-2"))) %>% 
-  # Mask the shared position 
-  filter(!snp_1 %in% masked.shared.positions, !snp_2 %in% masked.shared.positions) %>% 
   # Filter based one some minimum bridging depth cutoff
   filter((`00` + `01` + `10` + `11`) > min.bridging.depth)
 
@@ -300,17 +300,19 @@ Below, I'll test all of the pairs of SNPs where one SNP belongs to a phased clus
 
 ```{r Test All SNP Pairs, echo=T}
 
-# Check the background for all SNPs with reads bridging to Genome 1 or Genome 2
-background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do% {
+background.test.df = data.frame()
 
+# Check the background for all SNPs with reads bridging to Genome 1 or Genome 2
+for (i in 1:nrow(pairs.to.test)) {
+  
     # Print out the progress 
     if(i %% 100 == 0){
       print(paste("Testing pair", i, "out of", nrow(pairs.to.test), "total pairs..."))
     }
-
+ 
     # Get the SNPs being tested 
-    snp.1 = (pairs.to.test %>% slice(n = i))$snp_1
-    snp.2 = (pairs.to.test %>% slice(n = i))$snp_2
+    snp.1 = pairs.to.test[i,]$snp_1
+    snp.2 = pairs.to.test[i,]$snp_2
 
     # Get some info on the SNPs being compared
     snp.1.info = expanded.df %>%
@@ -331,8 +333,8 @@ background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do%
     overlaps = labled.bridging.df %>% filter(snp_1 == snp.1 & snp_2 == snp.2)
 
     # Test the linkage to genome 1 & 2 for each tissue sample
-    tissue.test = foreach(tissue = unique(haplotype.mean$Tissue), .combine = "rbind") %do% {
-      
+    tissue.test = data.frame()
+    for(tissue in unique(haplotype.mean$Tissue)) {
       # Get the frequency of genome 1 and genome 2 in this tissue
       g1.freq = haplotype.mean %>%
         filter(Haplotype == "genome-1", Tissue == tissue) %>% 
@@ -403,7 +405,7 @@ background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do%
         results = loglik.g1.g2(x11, x10, x01, x00, g1.freq, g2.freq, cluster.freq/total.freq, error = 0.01)
       }
       # Return the results
-      return(results)
+      tissue.test = rbind(tissue.test, results)
     }
     
     # Sum the log likelihoods across all tissues 
@@ -419,12 +421,16 @@ background.test.df = foreach(i = 1:nrow(pairs.to.test), .combine = "rbind") %do%
       c(lik.g1 > 0.95, lik.g2 > 0.95, 
         lik.g1 < 0.95 & lik.g2 < 0.95)
       ]
+    
     # Write to a row
-    tibble(snp_1 = snp.1, snp_2 = snp.2, background, haplotype, lik.g1, lik.g2)
+    row = tibble(snp_1 = snp.1, snp_2 = snp.2, background, haplotype, lik.g1, lik.g2)
+    background.test.df = rbind(background.test.df, row)
 
 }
 
 ```
+
+
 
 Now, let's see how the pairs of SNPs agree for each cluster/haplotype.
 

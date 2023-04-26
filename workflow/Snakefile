@@ -28,14 +28,7 @@ samples = list(set(SAMPLE_DF['Run']))
 
 rule all:
     input: 
-        join(config['variant_dir'], "variants.csv"),
-        join(config['coverage_dir'], "merged.depth"),
-        join(config['ref_dir'], 'annotated_SSPE_consensus_snps.csv'),
-        join(config['notebook_dir'], "establish-haplotype-relationship.html"),
-        join(config['bridging_dir'], "bridging_reads.csv")
-        # join(config['haplotype_dir'], "haplotypes.csv"),
-        # join(config['spatial_dir'], "bottleneck.csv"), 
-
+        join(config['notebook_dir'], "11-cluster-tissues-spatially.html")
       
 rule clean:
     shell:
@@ -59,9 +52,8 @@ include: "rules/second-alignment.smk"
 include: "rules/calculate-coverage.smk"
 # 5. Call variants using the 'SSPE' reference genome
 include: "rules/call-variants.smk"
-# 6. Run R notebooks that cluster and haplotype variants by frequency
-include: "rules/process-variants.smk"
-# 7. Count reads that cover multiple variants 
+# 6. Count reads that cover multiple variants 
 include: "rules/bridging-reads.smk"
-# 8. Call haplotypes using the 'SSPE' reference genome
-include: "rules/call-haplotypes.smk"
+# 7. Run R notebooks that cluster and haplotype variants by frequency
+include: "rules/process-variants.smk"
+

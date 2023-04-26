@@ -79,7 +79,7 @@ if (exists("snakemake")) {
   output.path = snakemake@params[['outcsv']]
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
 
 } else {
   

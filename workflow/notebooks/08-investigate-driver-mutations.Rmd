@@ -41,19 +41,19 @@ invisible(lapply(c(packages), library, character.only = TRUE))
 if (exists("snakemake")) {
 
   # Data from lofreq and varscan labeled with subclonal haplotypes
-  updated.data = "../../results/variants/validated_variants.csv"
+  updated.data = snakemake@params[["incsv"]]
   
   # Original unfiltered variant calls
-  variant.data = "../../results/variants/variants.csv"
+  variant.data = snakemake@params[["rawvariants"]]
   
   # Data from the count of bridging reads
-  bridging.data = "../../results/bridging/bridging_reads.csv"
+  bridging.data = snakemake@input[[1]]
   
   # Data from Iris' driver mutations
-  driver.mutations = "../../config/driver_mutations.csv"
+  driver.mutations = snakemake@params[["drivers"]]
   
   # Annotations for MeV genes
-  annotations.filepath = "../../config/annotations.csv"
+  annotations.filepath = snakemake@params[["annotations"]]
 
 } else {
 
@@ -84,7 +84,7 @@ if (exists("snakemake")) {
 if (exists("snakemake")) {
   
   # Path to save figures
-  figure.dir = snakemake@params[['figures']]
+  figure.dir = paste0(snakemake@params[['figures']], "/")
   
 } else {
   
