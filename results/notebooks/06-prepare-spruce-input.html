@@ -351,7 +351,7 @@ display: none;
 
 <h1 class="title toc-ignore">6. Prepare Spruce Input</h1>
 <h4 class="author">Will Hannon</h4>
-<h4 class="date">26 April, 2023</h4>
+<h4 class="date">28 April, 2023</h4>
 
 </div>
 
@@ -573,8 +573,18 @@ spruce.output = left_join(left_join(with.anc.df, Tissue_index), Cluster_index) %
 ## Joining with `by = join_by(Haplotype)`</code></pre>
 <pre class="r"><code>head(spruce.output) %&gt;% 
   kable(., caption = &quot;Data for SPRUCE&quot;)</code></pre>
-<table>
+<table style="width:100%;">
 <caption>Data for SPRUCE</caption>
+<colgroup>
+<col width="7%" />
+<col width="20%" />
+<col width="7%" />
+<col width="20%" />
+<col width="7%" />
+<col width="14%" />
+<col width="10%" />
+<col width="10%" />
+</colgroup>
 <thead>
 <tr class="header">
 <th align="right">tind</th>
@@ -590,63 +600,63 @@ spruce.output = left_join(left_join(with.anc.df, Tissue_index), Cluster_index) %
 <tbody>
 <tr class="odd">
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
+<td align="left">Temporal_Lobe</td>
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
+<td align="left">Temporal_Lobe</td>
 <td align="right">0</td>
-<td align="left">cluster_8</td>
-<td align="right">0.1015</td>
-<td align="right">0.1600</td>
-</tr>
-<tr class="even">
-<td align="right">0</td>
-<td align="left">Cerebellum</td>
-<td align="right">0</td>
-<td align="left">Cerebellum</td>
-<td align="right">1</td>
 <td align="left">genome_2</td>
-<td align="right">0.0000</td>
-<td align="right">0.1680</td>
-</tr>
-<tr class="odd">
-<td align="right">0</td>
-<td align="left">Cerebellum</td>
-<td align="right">0</td>
-<td align="left">Cerebellum</td>
-<td align="right">2</td>
-<td align="left">cluster_4</td>
-<td align="right">0.0000</td>
-<td align="right">0.0494</td>
+<td align="right">0.8837</td>
+<td align="right">0.9231</td>
 </tr>
 <tr class="even">
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
+<td align="left">Temporal_Lobe</td>
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
-<td align="right">3</td>
+<td align="left">Temporal_Lobe</td>
+<td align="right">1</td>
 <td align="left">cluster_7</td>
 <td align="right">0.0000</td>
-<td align="right">0.0585</td>
+<td align="right">0.0350</td>
 </tr>
 <tr class="odd">
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
+<td align="left">Temporal_Lobe</td>
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
-<td align="right">4</td>
+<td align="left">Temporal_Lobe</td>
+<td align="right">2</td>
 <td align="left">genome_1</td>
-<td align="right">0.7761</td>
-<td align="right">0.9004</td>
+<td align="right">0.0604</td>
+<td align="right">0.1157</td>
 </tr>
 <tr class="even">
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
+<td align="left">Temporal_Lobe</td>
 <td align="right">0</td>
-<td align="left">Cerebellum</td>
-<td align="right">5</td>
+<td align="left">Temporal_Lobe</td>
+<td align="right">3</td>
 <td align="left">cluster_2</td>
-<td align="right">0.4387</td>
-<td align="right">0.5537</td>
+<td align="right">0.0000</td>
+<td align="right">0.0207</td>
+</tr>
+<tr class="odd">
+<td align="right">0</td>
+<td align="left">Temporal_Lobe</td>
+<td align="right">0</td>
+<td align="left">Temporal_Lobe</td>
+<td align="right">4</td>
+<td align="left">cluster_9</td>
+<td align="right">0.2536</td>
+<td align="right">0.2627</td>
+</tr>
+<tr class="even">
+<td align="right">0</td>
+<td align="left">Temporal_Lobe</td>
+<td align="right">0</td>
+<td align="left">Temporal_Lobe</td>
+<td align="right">5</td>
+<td align="left">genome_01</td>
+<td align="right">0.0659</td>
+<td align="right">0.1520</td>
 </tr>
 </tbody>
 </table>

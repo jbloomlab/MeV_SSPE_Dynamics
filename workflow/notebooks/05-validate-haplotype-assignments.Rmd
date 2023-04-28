@@ -620,7 +620,7 @@ gene_order = c("N", "P", "M", "F", "H", "L")
 
 ```
 
-```{r Figure 6, message=F, warnings=F, fig.align='center', fig.width=15, fig.height=10}
+```{r Figure 7a, message=F, warnings=F, fig.align='center', fig.width=15, fig.height=10}
 
 # Define the order of haplotypes on the y-axis
 figure.haplotype.order = c("SSPE Ancestor",
@@ -703,14 +703,14 @@ distribution.df %>%
     xlab("Position") +
   
   
-    scale_x_continuous(limits=c(-180, 16180), breaks=c(0, 5000, 10000, 15000)) +
+    scale_x_continuous(limits=c(-400, 16250), breaks=c(0, 5000, 10000, 15000)) +
     scale_color_manual(values = haplotype.colors, guide = 'none') +
     scale_shape_manual(name="A to G / U to C", values = c(108, 4)) +
     
     # == Annotations of genes == #
     
     # 3' Start
-    annotate(geom = "text", x = (N$Start - 180), y = .05, label = "3'", size = 8) +
+    annotate(geom = "text", x = (N$Start - 400), y = .05, label = "3'", size = 8) +
 
     # Nucleoprotein
     annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.5, ymax = .5 ,
@@ -750,7 +750,7 @@ distribution.df %>%
                alpha = .05, fill = "#bf1515", size = .1) +
   
     # 5' Start
-    annotate(geom = "text", x = (L$Stop + 180), y =  .05, label = "5'", size = 8) +
+    annotate(geom = "text", x = (L$Stop + 400), y =  .05, label = "5'", size = 8) +
 
   
     theme_classic() +
@@ -764,7 +764,7 @@ distribution.df %>%
     theme(axis.title.y = element_blank()) +
     theme(legend.position = "bottom")  
 
-ggsave(paste(figure.dir, "figure-7a.png", sep=""), width = 15, height = 10, dpi = 300)
+ggsave(paste(figure.dir, "figure-7a.png", sep=""), width = 11.25, height = 10, dpi = 300)
 
 
 ```

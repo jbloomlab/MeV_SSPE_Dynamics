@@ -231,7 +231,7 @@ ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape
   # == Annotations of genes == #
   
   # 3' Start
-  annotate(geom = "text", x = (N$Start - 150), y =  -.05, label = "3'", size = 5) +
+  annotate(geom = "text", x = (N$Start - 400), y =  -.05, label = "3'", size = 5) +
    
   # Nucleoprotein
   annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = -.1, ymax = 0 ,
@@ -276,7 +276,7 @@ ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape
              alpha = .05, fill = "#bf1515", size = .1) +
   
   # 5' Start
-  annotate(geom = "text", x = (L$Stop + 150), y =  -.05, label = "5'", size = 5) +
+  annotate(geom = "text", x = (L$Stop + 400), y =  -.05, label = "5'", size = 5) +
  
   
   # Themes
@@ -288,7 +288,7 @@ ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape
   theme(legend.text = element_text(size=12)) +
   theme(axis.text.x = element_text(size=16)) + 
   theme(axis.title.x = element_text(size=16)) + 
-  scale_x_continuous(limits=c(-150, 16150), breaks=c(0, 5000, 10000, 15000)) +
+  scale_x_continuous(limits=c(-400, 16200), breaks=c(0, 5000, 10000, 15000)) +
   scale_y_continuous(breaks=c(0, 0.25, 0.5, 0.75, 1.0)) +
   theme(legend.position = "bottom") 
 
