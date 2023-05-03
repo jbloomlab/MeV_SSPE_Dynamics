@@ -168,10 +168,26 @@ ancestral.df = read_csv(ancestral.data, show_col_types = FALSE) %>%
   select(POS, REF, ALT, SNP) %>% 
   mutate(AF = 1.0) 
 
+# The consensus is made with all samples. 
+# This can lead to double counting if a 
+# variant in the SSPE 1 sample wasn't >98% 
+# Remove anything that is being double counted
+ref.snps = selected.variants.df %>% 
+  filter(Tissue == "SSPE 1") %>% 
+  select(POS, REF, ALT, AF) %>% 
+  filter(POS %in% ancestral.df$POS) %>% 
+  left_join(., select(ancestral.df, POS, REF, ALT),
+            by = "POS",
+            suffix = c(".sspe", ".ancestor")) %>% 
+  mutate(SNP = paste0(REF.sspe, POS, ALT.sspe)) %>% 
+  pull(SNP)
+
 # Format the data for plotting
 sspe.1.df = selected.variants.df %>% 
   # Select the pilot specimen
   filter(Tissue == "SSPE 1") %>% 
+  # Filter out SNPs also in the brain reference
+  filter(!SNP %in% ref.snps) %>% 
   # Select the important columns 
   select(colnames(ancestral.df)) %>% 
   # Add in the ancestral SNPs 
@@ -303,7 +319,7 @@ What are the counts of mutations in each of these three bins (`CBA`: "Candidate 
 # What's the count of SNPs in each category?
 sspe.1.df %>% 
   group_by(Genotype) %>% 
-  count() %>% 
+  count() %>%
   kable(., caption = "Candidate Genotype Variant Counts")
 
 ```

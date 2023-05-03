@@ -426,4 +426,63 @@ ggsave(paste(figure.dir, "figure-6.png"), width = 15, height = 8, dpi = 300)
 
 ```
 
+# Reccurent Mutations
+
+Many of the 'Driver' mutations appear as recurrent mutations on the background of G1 and G2. Let's visualize these below:
+
+```{r Recurrent Mutations, fig.align='center', fig.width=6, fig.height=4}
+
+tissue.mean = labeled.df %>% 
+  mutate(Tissue = case_when(
+    Tissue == "UBS" ~ "Upper Brain Stem",
+    TRUE ~ Tissue
+  )) %>% 
+  filter(Haplotype %in% c("genome-1", "genome-2")) %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF.mean = mean(AF, na.rm = TRUE), 
+            SD = sd(AF, na.rm = TRUE),
+            N = n()) %>% 
+  mutate(SE = SD / sqrt(N),
+         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
+         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
+  rename("AF" = AF.mean) %>% 
+  mutate(Haplotype = case_when(
+    Haplotype == "genome-1" ~ "G1",
+    Haplotype == "genome-2" ~ "G2"
+  ))
+
+labeled.df %>% 
+  select(SNP, Tissue, AF, POS) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !c(SNP, POS), names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(labeled.df, c("SNP", "Tissue", "DP", "AA_Change", "Gene_Name")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP")  %>% 
+  filter(AA_Change %in% c("Gln527*", "Ile8Thr")) %>% 
+  mutate(title = paste(Gene_Name, AA_Change, sep = "-")) %>% 
+  mutate(Tissue = case_when(
+    Tissue == "UBS" ~ "Upper Brain Stem",
+    TRUE ~ Tissue
+  )) %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, group = SNP )) + 
+    geom_ribbon(data = tissue.mean, aes(x=factor(Tissue, levels = tissue.order),
+                                        ymin=AF-SD,
+                                        ymax=AF+SD,
+                                        group = Haplotype,
+                                        fill = Haplotype), alpha=0.2, colour = NA) +
+    geom_line(aes(linetype = title)) + 
+    scale_fill_manual(name = "Genome", values=c("#424ef5", "#cf1919")) + 
+    scale_linetype_manual(name = "Mutation", values = c(1, 2)) + 
+    xlab("Tissue") + 
+    ylab("Allele Frequency") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) 
+
+ggsave(paste(figure.dir, "extended-data-figure-7.png"), width = 6, height = 4, dpi = 300)
+
+```
+
+
+
+
 
