@@ -1,0 +1,530 @@
+---
+title: "11. Cluster Tissues Spatially"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to take an unbiased approach to show how similar tissue compartments have similar viral populations. We'll do this by clustering tissues based on the frequency of SNPs in each sample.
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+
+packages = c("tidyverse", "UpSetR", "ComplexHeatmap", "cluster", "ggrepel", "gridExtra", 'grid', 'RColorBrewer', 'scatterpie')
+## Check that packages are installed, if not, install them
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+if (exists("snakemake")) {
+
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = snakemake@params[["incsv"]]
+  
+  # Brain coordinates for plotting spatial heatmap
+  brain.coords = snakemake@params[["brain_coords"]]
+
+} else {
+
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = "../../results/variants/validated_variants.csv"
+  
+  # Brain coordinates for plotting spatial heatmap
+  brain.coords = "../../config/brain-coordinates.csv"
+
+
+}
+
+```
+
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+if (exists("snakemake")) {
+  
+  # Path to save figures
+  figure.dir = paste0(snakemake@params[['figures']], "/")
+  
+} else {
+  
+  # Path to save figures
+  figure.dir ="../../results/figures/"
+
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
+
+```
+
+```{r Color Pallet, echo=F}
+
+haplotype.colors = c("#989891", "#000000", "#22488F", "#B02B23", "#E1EAF6",  "#A6C9DF", "#7AADD2","#5691C1", "#3871B0", "#67649F", "#8484B1", "#B6B7D1", "#FFFCBA", "#F9D984", "#F4B460", "#EE9B4F", "#DE4B32")
+
+names(haplotype.colors) = c("genome 01", "cluster 6", "genome 1", "genome 2", "cluster 1", "cluster 5", "cluster 2", "cluster 3", "cluster 4", "cluster 6", "cluster 7", "cluster 8", "cluster 9", "cluster 10", "cluster 11", "cluster 12", "cluster 13")
+
+```
+
+## Clustering Tissue Samples
+
+First, I do a PCA analysis on the frequency of mutations in each compartment to see if variance in allele frequency between tissues captures any level of spatial information. 
+
+```{r Process Data, echo=F, warning=F, message=F}
+
+# Final set of haplotype assignments
+updated.df = read_csv(updated.data, show_col_types = F) %>% 
+  # Remove SSPE 1 and SSPE 2 since no spatial info is known 
+  filter(!Tissue %in% c("SSPE 1", "SSPE 2")) %>% 
+  # For consistency, change the names of G1, G2, and G-1-1
+  mutate(Haplotype = case_when(
+    Haplotype == "genome-1" ~ "genome 01",
+    Haplotype == "genome-1-1" ~ "genome 1",
+    Haplotype == "genome-2" ~ "genome 2",
+    T ~ Haplotype
+  )) 
+
+# Prepare the SNPs as column and Allele frequency as row
+frequency.by.snp = updated.df %>% 
+  # filter(!Haplotype %in% c("fixed", "both")) %>%
+  select(AF, SNP, Tissue) %>% 
+  pivot_wider(names_from = SNP, values_from = AF, values_fill = 0)  %>% 
+  remove_rownames %>% 
+  column_to_rownames(var = "Tissue")
+
+```
+
+```{r PCA analysis, message=F, echo=T}
+
+# Do the PCA 
+pcobj = prcomp(frequency.by.snp, center = TRUE, scale. = TRUE)
+
+# PCs to plot
+choices = 1:2
+
+# Scaling factors 
+scale = 1
+var.scale = scale 
+obs.scale = 1 - scale
+
+# Variables for plotting
+circle.prob = 0.69
+varname.adjust = 1.5
+varname.size = 3
+
+# ----------
+
+# Pull the data from the PCA object
+nobs.factor = sqrt(nrow(pcobj$x) - 1)
+d = pcobj$sdev
+u = sweep(pcobj$x, 2, 1 / (d * nobs.factor), FUN = '*')
+v = pcobj$rotation
+ 
+# Scores
+choices = pmin(choices, ncol(u))
+df.u = as.data.frame(sweep(u[,choices], 2, d[choices]^obs.scale, FUN='*'))
+
+# Directions
+v = sweep(v, 2, d^var.scale, FUN='*')
+df.v = as.data.frame(v[, choices])
+
+names(df.u)  = c('xvar', 'yvar')
+names(df.v) = names(df.u)
+
+df.u = df.u * nobs.factor
+
+# Scale directions
+r = sqrt(qchisq(circle.prob, df = 2)) * prod(colMeans(df.u^2))^(1/4)
+v.scale = rowSums(v^2)
+df.v = r * df.v / sqrt(max(v.scale))
+
+# Append the proportion of explained variance to the axis labels
+u.axis.labs = paste('PC', choices, sep='')
+u.axis.labs = paste(u.axis.labs, 
+                    sprintf('(%0.1f%% explained var.)', 
+                            100 * pcobj$sdev[choices]^2/sum(pcobj$sdev^2)))
+
+# Variables for text label placement
+df.v$varname = rownames(v)
+df.v$angle = with(df.v, (180/pi) * atan(yvar / xvar))
+df.v$hjust = with(df.v, (1 - varname.adjust * sign(xvar)) / 2)
+
+# Add the data from the haplotypes
+df.u = df.u %>% 
+  rownames_to_column(var = "Tissue") 
+
+df.v = df.v %>% 
+  rownames_to_column(var = "SNP") %>% 
+  left_join(., select(updated.df, SNP, Background, Haplotype, Gene)) %>% 
+  distinct()
+
+```
+
+First, let's see what the PCA plot looks like with no loadings superimposed on the plot. The closer the tissues are to each other, the more similar the variant populations.  
+
+```{r PCA no loadings, echo = F, fig.align='center', fig.width = 12, fig.height = 8}
+
+# Plot the PCA
+df.u %>% 
+  mutate(Tissue = case_when(
+  Tissue == "Frontal Cortex 2" ~ "Frontal C2", 
+  Tissue == "Frontal Cortex 1" ~ "Frontal C1", 
+  Tissue == "Frontal Cortex 3" ~ "Frontal C3", 
+  Tissue == "Parietal Lobe" ~ "Parietal L",
+  Tissue == "Temporal Lobe" ~ "Temporal L", 
+  Tissue == "Occipital Lobe" ~ "Occipital L",
+  Tissue == "Hippocampus" ~ "Hippocampus",
+  Tissue == "Internal Capsule" ~ "Intl Capsule", 
+  Tissue == "Midbrain" ~ "Midbrain" , 
+  Tissue == "Upper Brain Stem" ~ "U Brainstem",
+  Tissue == "Brain Stem" ~ "Brainstem",
+  Tissue == "Cerebellum" ~ "Cerebellum",
+  Tissue == "Cerebellum Nucleus" ~ "Cerebellum TN"
+  )) %>% 
+  ggplot(aes(x = xvar, y = yvar)) + 
+    xlab(u.axis.labs[1]) + 
+    ylab(u.axis.labs[2]) +
+    coord_equal() +
+    # geom_segment(data = df.v,
+    #              aes(x = 0, y = 0, xend = xvar, yend = yvar),
+    #              arrow = arrow(length = unit(1/2, 'picas')), col = "#FFFFFF") +
+    geom_point(size = 2) + 
+    geom_text_repel(aes(label = Tissue), size = 5) +
+    # geom_text(data = df.v, 
+    #           aes(label = varname, x = xvar, y = yvar, 
+    #               angle = angle, hjust = hjust), 
+    #           color = 'darkred', size = varname.size) + 
+    # scale_color_manual(values = c("#307EC2", "#B63F3E", "#bdbdbd")) + 
+    theme_bw(18) + 
+    theme(plot.background = element_rect(fill='transparent', color=NA),
+          panel.background = element_rect(fill='transparent'),
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank())
+    
+
+ggsave(paste(figure.dir, "extended-data-figure-6a.png"), width = 12, height = 8, dpi = 300)
+
+```
+
+Now, let's add the loadings to the plot. These are the individual SNPs. 
+
+```{r PCA with loadings, echo = F, fig.align='center', fig.width = 12, fig.height = 8}
+
+ggplot(data = df.u, aes(x = xvar, y = yvar)) + 
+  xlab(u.axis.labs[1]) + 
+  ylab(u.axis.labs[2]) +
+  coord_equal() +
+  geom_segment(data = df.v,
+               aes(x = 0, y = 0, xend = xvar, yend = yvar),
+               arrow = arrow(length = unit(1/2, 'picas')), col = "grey") + 
+  geom_point(size = 1.5) + 
+  geom_text_repel(aes(label = Tissue)) +
+  # geom_text(data = df.v, 
+  #           aes(label = varname, x = xvar, y = yvar, 
+  #               angle = angle, hjust = hjust), 
+  #           color = 'darkred', size = varname.size) + 
+  # scale_color_manual(values = c("#307EC2", "#B63F3E", "#bdbdbd")) + 
+  theme_bw(18) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(legend.position = "none")
+
+```
+
+We can see that there are clear groups of SNPs that separate tissues from one another. Let's see if some of these are explained by the haplotype labels. 
+
+```{r PCA with labeled loadings, echo = F, fig.align='center', fig.width = 12, fig.height = 10}
+
+ggplot(data = df.u, aes(x = xvar, y = yvar)) + 
+  xlab(u.axis.labs[1]) + 
+  ylab(u.axis.labs[2]) +
+  coord_equal() +
+  geom_segment(data = df.v,
+               aes(x = 0, y = 0, xend = xvar, yend = yvar, col = Haplotype),
+               arrow = arrow(length = unit(1/2, 'picas'))) + 
+  geom_point(size = 1.5) + 
+  geom_text_repel(aes(label = Tissue)) +
+  scale_color_manual(values = haplotype.colors) +
+  # geom_text(data = df.v, 
+  #           aes(label = varname, x = xvar, y = yvar, 
+  #               angle = angle, hjust = hjust), 
+  #           color = 'darkred', size = varname.size) + 
+  # scale_color_manual(values = c("#307EC2", "#B63F3E", "#bdbdbd")) + 
+  theme_bw(18) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(legend.position = "bottom")
+
+```
+
+Let's look at only the haplotype loadings - i.e. the SNPs that we've been able to haplotype.
+
+```{r PCA with haplotype loadings, echo = F, fig.align='center', fig.width = 12, fig.height = 10}
+
+ggplot(data = df.u, aes(x = xvar, y = yvar)) + 
+  xlab(u.axis.labs[1]) + 
+  ylab(u.axis.labs[2]) +
+  coord_equal() +
+  geom_segment(data = filter(df.v, !Haplotype %in% c('subclonal', 'both')),
+               aes(x = 0, y = 0, xend = xvar, yend = yvar, col = Haplotype),
+               arrow = arrow(length = unit(1/2, 'picas'))) + 
+  geom_point(size = 1.5) + 
+  geom_text_repel(aes(label = Tissue)) +
+  scale_color_manual(values = haplotype.colors) +
+  # geom_text(data = df.v, 
+  #           aes(label = varname, x = xvar, y = yvar, 
+  #               angle = angle, hjust = hjust), 
+  #           color = 'darkred', size = varname.size) + 
+  # scale_color_manual(values = c("#307EC2", "#B63F3E", "#bdbdbd")) + 
+  theme_bw(18) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(legend.position = "bottom")
+
+```
+
+Finally, let's look at the loadings that are subclonal. Is there some structure that we've missed? 
+
+```{r PCA with subclonal loadings, echo = F, fig.align='center', fig.width = 12, fig.height = 10}
+
+ggplot(data = df.u, aes(x = xvar, y = yvar)) + 
+  xlab(u.axis.labs[1]) + 
+  ylab(u.axis.labs[2]) +
+  coord_equal() +
+  geom_segment(data = filter(df.v, Haplotype == 'subclonal'),
+               aes(x = 0, y = 0, xend = xvar, yend = yvar, col = Haplotype),
+               arrow = arrow(length = unit(1/2, 'picas'))) + 
+  geom_point(size = 1.5) + 
+  geom_text_repel(aes(label = Tissue)) +
+  scale_color_manual(values = haplotype.colors) +
+  # geom_text(data = df.v, 
+  #           aes(label = varname, x = xvar, y = yvar, 
+  #               angle = angle, hjust = hjust), 
+  #           color = 'darkred', size = varname.size) + 
+  # scale_color_manual(values = c("#307EC2", "#B63F3E", "#bdbdbd")) + 
+  theme_bw(18) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  theme(legend.position = "bottom")
+
+```
+
+## Haplotypes in Space
+
+Another way of visualizing the distributions of genotypes over space is to plot the fraction of each sample that belongs to a given haplotype. These can be plotted as a pie chart where the centroid of the pie chart is the rough location of the sample in the brain. I'll make this plot below. 
+
+```{r Format Data for Pie Charts}
+
+# Get the haplotype names for each SNP
+haplotypes.SNP.label = updated.df %>% 
+  select(Background, Haplotype, SNP) %>% 
+  distinct()
+
+# Expand the haplotyped SNPs to have records for all tissues
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP",)), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., distinct(select(updated.df, c("SNP", "POS"))), by = c("SNP")) %>% 
+  left_join(., haplotypes.SNP.label, by = "SNP") 
+
+# Calculate the mean haplotype frequency across each tissue
+haplotype.mean = expanded.df %>% 
+  group_by(Tissue, Haplotype, Background) %>% 
+  summarize(AF = mean(AF))
+
+# Rename to cluster names we've chosen 
+haplotype.mean = haplotype.mean %>% 
+  mutate(Haplotype = case_when(
+    Haplotype == "cluster 1" ~  "cluster 1",
+    Haplotype == "cluster 2" ~  "cluster 2",
+    Haplotype == "cluster 3" ~  "cluster 3",
+    Haplotype == "cluster 4" ~  "cluster 4",
+    Haplotype == "cluster 5" ~  "cluster 1a",
+    Haplotype == "cluster 6" ~  "G-FC2",
+    Haplotype == "cluster 7" ~  "cluster 5",
+    Haplotype == "cluster 8" ~  "cluster 6",
+    Haplotype == "cluster 9" ~  "cluster 7",
+    Haplotype == "cluster 10" ~  "cluster 8",
+    Haplotype == "cluster 11" ~  "cluster 9",
+    Haplotype == "cluster 12" ~  "cluster 10",
+    Haplotype == "cluster 13" ~  "cluster 11",
+    Haplotype == "genome 01" ~  "G-01",
+    Haplotype == "genome 1" ~  "G-1",
+    Haplotype == "genome 2" ~  "G-2",
+    TRUE ~ Haplotype))
+
+# Colors for these cluster names
+haplotype.colors =  c("#000000", "#E1EAF6",  "#A6C9DF", "#7AADD2","#5691C1", "#3871B0", "#67649F", "#8484B1", "#FFFCBA", "#F9D984", "#F4B460", "#EE9B4F", "#DE4B32", "#22488F", "#B02B23")
+names(haplotype.colors) = c("G-FC2", "cluster 1", "cluster 1a", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 6", "cluster 7", "cluster 8", "cluster 9", "cluster 10", "cluster 11", "G-1 unknown", "G-2 unknown")
+
+# Keep only the clusters and fill the rest in with unknown 
+cluster.frequencies = haplotype.mean %>% 
+  select(!Background) %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>%
+  mutate(`cluster 1` = `cluster 1` - `cluster 1a`) %>% 
+  mutate(`cluster 1` = if_else(`cluster 1` < 0, 0, `cluster 1`)) %>% 
+  pivot_longer(cols = -c(Tissue), names_to = "Haplotype", values_to = "AF") %>% 
+  filter(!Haplotype %in% c("G-1", "G-2", "G-01")) %>% 
+  ungroup()
+
+# Get the background of each haplotype
+backgrounds = haplotype.mean %>%
+  filter(!Haplotype %in% c("G-1", "G-2", "G-01")) %>%
+  ungroup() %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  select(Haplotype, Background) %>% 
+  distinct() %>% 
+  mutate(Background = case_when(
+    Background == "genome-1" ~ "G-01",
+    Background == "genome-2" ~  "G-2",
+    TRUE ~ Background))
+
+# Mean G1/G2 frequency in each tissue sample
+g1.g2.frequency = haplotype.mean %>% 
+  select(!Background) %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>%
+  mutate(`cluster 1` = `cluster 1` - `cluster 1a`) %>% 
+  mutate(`cluster 1` = if_else(`cluster 1` < 0, 0, `cluster 1`)) %>% 
+  pivot_longer(cols = -c(Tissue), names_to = "Haplotype", values_to = "AF") %>% 
+  filter(Haplotype %in% c("G-2", "G-01")) %>%
+  ungroup() %>%
+  group_by(Tissue) %>%
+  mutate(Backgound_AF = AF / sum(AF)) %>% 
+  select(!AF) %>% 
+  rename(Background = Haplotype)
+
+# Add in a row for unaccounted genome-1 % in each tissue sample
+unknown.frequency = cluster.frequencies %>% 
+  left_join(., backgrounds, by="Haplotype") %>% 
+  group_by(Tissue, Background) %>% 
+  summarize(AF = sum(AF)) %>% 
+  left_join(., g1.g2.frequency, by=c("Background", "Tissue")) %>% 
+  mutate(AF = Backgound_AF - AF) %>% 
+  mutate(Haplotype = case_when(
+    Background == "G-01" ~ "G-1 unknown",
+    Background == "G-2" ~ "G-2 unknown",
+  )) %>% 
+  ungroup() %>% 
+  select(!c("Background", "Backgound_AF"))
+
+# Join back to the data
+cluster.frequencies = cluster.frequencies %>% 
+  add_row(unknown.frequency) 
+
+# Read in the coordinates of each tissue and add to the plot
+brain.coordinates.df = read_csv(brain.coords, show_col_types = F)
+cluster.frequencies = cluster.frequencies %>% 
+  full_join(., brain.coordinates.df, by = "Tissue")
+
+# Finally, add in the size categories
+cluster.frequencies = cluster.frequencies %>% 
+  mutate(Size = case_when(
+    Tissue == "Frontal Cortex 1" ~ "large",
+    Tissue == "Frontal Cortex 2" ~ "large",
+    Tissue == "Frontal Cortex 3" ~ "medium",
+    Tissue == "Parietal Lobe" ~ "large",
+    Tissue == "Occipital Lobe" ~ "medium",
+    Tissue == "Temporal Lobe" ~ "medium",
+    Tissue == "Upper Brain Stem" ~ "small",
+    Tissue == "Brain Stem" ~ "small",
+    Tissue == "Midbrain" ~ "small",
+    Tissue == "Hippocampus" ~ "medium",
+    Tissue == "Internal Capsule" ~ "small",
+    Tissue == "Cerebellum" ~ "small",
+    Tissue == "Cerebellum Nucleus" ~ "small"
+  ))
+  
+```
+
+```{r Spatial Pie Chart}
+
+# Haplotype Order
+haplotype.order = c("G-FC2",
+                    "cluster 1",
+                    "cluster 1a",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "G-1 unknown",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11", 
+                    "G-2 unknown")
+
+# Create the plot
+cluster.frequencies.wide = cluster.frequencies %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>% 
+  mutate(Size = case_when(
+    Size == "small" ~ 1.4, 
+    Size == "medium" ~ 2.3, 
+    Size == "large" ~ 3
+  ))
+
+# Reorder based on the haplotype ordering
+cluster.frequencies.wide = cluster.frequencies.wide[, c("Tissue", "x", "y", "Size", haplotype.order)]
+
+# Plot the scatterplots
+ggplot() +
+    geom_scatterpie(aes(x=x, y=y, r=Size*2.7, group=Tissue), 
+                    cols=haplotype.order,
+                    data=cluster.frequencies.wide,
+                    color = NA) +
+    coord_equal() + 
+    scale_fill_manual(values = haplotype.colors) + 
+    theme_void() + 
+    theme(legend.title = element_blank(),
+          legend.position = c(1.15, 0.5), 
+          legend.margin = margin(0, -25, 0, 0), 
+          plot.margin = margin(5, 50, 5, 5, "pt"),
+          plot.background = element_rect(fill='transparent', color=NA))
+
+ggsave(paste(figure.dir, "figure-7b-less-size-range.png"), width = 8, height = 4, dpi = 300)
+
+
+```
+
+
+
+
+
+
+
+
+

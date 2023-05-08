@@ -75,6 +75,7 @@ notebook_dir: results/notebooks
 spruce_dir: results/spruce
 phylogeny_dir: results/phylogeny
 figure_dir: results/figures
+pilot_dir: results/pilot
 
 # ++ Config Directories ++ #
 tools: config/tools

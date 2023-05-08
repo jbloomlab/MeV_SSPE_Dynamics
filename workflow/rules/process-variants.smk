@@ -17,13 +17,13 @@ rule process_variant_calls:
         join(config['variant_dir'], "variants.csv"),
         join(config['coverage_dir'], "merged.depth")
     output:
-        join(config['notebook_dir'], "01-process-variant-calls.html")
+        join(config['notebook_dir'], "process-variant-calls.html")
     params: 
         outcsv=join(config['variant_dir'], "filtered_variants.csv"),
         annotations=config['MeVChiTok']['annotations'],
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/01-process-variant-calls.Rmd"
+    script: "../notebooks/process-variant-calls.Rmd"
 
 
 rule determine_main_genotypes:
@@ -34,17 +34,17 @@ rule determine_main_genotypes:
     In this notebook, I identify the 'genotypes' `Genome 1` and `Genome 2`.
     """
     input:
-        join(config['notebook_dir'], "01-process-variant-calls.html")
+        join(config['pilot_dir'], "pilot_variants.csv"),
+        join(config['notebook_dir'], "process-variant-calls.html")
     output:
-        join(config['notebook_dir'], "02-determine-main-genotypes.html")
+        join(config['notebook_dir'], "determine-main-genotypes.html")
     params: 
         incsv=join(config['variant_dir'], "filtered_variants.csv"),
-        ancestral=join(config['ref_dir'], "annotated_SSPE_consensus_snps.csv"),
         annotations=config['MeVChiTok']['annotations'],
         outcsv=join(config['variant_dir'], "genotyped_variants.csv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/02-determine-main-genotypes.Rmd"
+    script: "../notebooks/determine-main-genotypes.Rmd"
 
 
 rule phase_subclonal_mutations:
@@ -55,9 +55,9 @@ rule phase_subclonal_mutations:
     In this notebook I identify a rough set of subclonal haplotypes on G1 and G2.
     """
     input:
-        join(config['notebook_dir'], "02-determine-main-genotypes.html")
+        join(config['notebook_dir'], "determine-main-genotypes.html")
     output:
-        join(config['notebook_dir'], "03-phase-subclonal-mutations.html")
+        join(config['notebook_dir'], "phase-subclonal-mutations.html")
     params: 
         incsv=join(config['variant_dir'], "genotyped_variants.csv"),
         ancestral=join(config['ref_dir'], "annotated_SSPE_consensus_snps.csv"),
@@ -65,7 +65,7 @@ rule phase_subclonal_mutations:
         outcsv=join(config['variant_dir'], "clustered_variants.csv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/03-phase-subclonal-mutations.Rmd"
+    script: "../notebooks/phase-subclonal-mutations.Rmd"
 
 
 rule assign_haplotype_backgrounds:
@@ -79,16 +79,16 @@ rule assign_haplotype_backgrounds:
     input:
         join(config['bridging_dir'], "genotyped.csv"),
         join(config['bridging_dir'], "bridging_reads.csv"),
-        join(config['notebook_dir'], "03-phase-subclonal-mutations.html")
+        join(config['notebook_dir'], "phase-subclonal-mutations.html")
     output:
-        join(config['notebook_dir'], "04-assign-haplotype-backgrounds.html")
+        join(config['notebook_dir'], "assign-haplotype-backgrounds.html")
     params:
         incsv=join(config['variant_dir'], "clustered_variants.csv"),
         annotations=config['MeVChiTok']['annotations'],
         outcsv=join(config['variant_dir'], "assigned_variants.csv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/04-assign-haplotype-backgrounds.Rmd"
+    script: "../notebooks/assign-haplotype-backgrounds.Rmd"
 
 
 rule validate_haplotype_assignments:
@@ -100,9 +100,9 @@ rule validate_haplotype_assignments:
     """
     input:
         join(config['bridging_dir'], "bridging_reads.csv"),
-        join(config['notebook_dir'], "04-assign-haplotype-backgrounds.html")
+        join(config['notebook_dir'], "assign-haplotype-backgrounds.html")
     output:
-        join(config['notebook_dir'], "05-validate-haplotype-assignments.html")
+        join(config['notebook_dir'], "validate-haplotype-assignments.html")
     params: 
         incsv=join(config['variant_dir'], "assigned_variants.csv"),
         rawvariants=join(config['variant_dir'], "variants.csv"),
@@ -111,7 +111,7 @@ rule validate_haplotype_assignments:
         outcsv=join(config['variant_dir'], "validated_variants.csv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/05-validate-haplotype-assignments.Rmd"
+    script: "../notebooks/validate-haplotype-assignments.Rmd"
 
 
 rule prepare_spruce_input:
@@ -123,16 +123,16 @@ rule prepare_spruce_input:
     """
     input:
         join(config['coverage_dir'], "merged.depth"),
-        join(config['notebook_dir'], "05-validate-haplotype-assignments.html")
+        join(config['notebook_dir'], "validate-haplotype-assignments.html")
     output:
-        join(config['notebook_dir'], "06-prepare-spruce-input.html")
+        join(config['notebook_dir'], "prepare-spruce-input.html")
     params: 
         incsv=join(config['variant_dir'], "validated_variants.csv"),
         rawvariants=join(config['variant_dir'], "variants.csv"),
         spruce=join(config['variant_dir'], "spruce_input.tsv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/06-prepare-spruce-input.Rmd"
+    script: "../notebooks/prepare-spruce-input.Rmd"
 
 
 rule make_SPRUCE_trees: 
@@ -141,7 +141,7 @@ rule make_SPRUCE_trees:
     of plausible trees based on the haplotype frequencies.
     """
     input: 
-        join(config['notebook_dir'], "06-prepare-spruce-input.html")
+        join(config['notebook_dir'], "prepare-spruce-input.html")
     output:
         join(config['variant_dir'], "spruce_output.tsv")
     params:
@@ -165,13 +165,13 @@ rule filter_spruce_trees:
         join(config['variant_dir'], "spruce_output.tsv"),
         join(config['bridging_dir'], "bridging_reads.csv")
     output:
-        join(config['notebook_dir'], "07-filter-spruce-trees.html")
+        join(config['notebook_dir'], "filter-spruce-trees.html")
     params: 
         incsv=join(config['variant_dir'], "validated_variants.csv"),
         final_tree=join(config['phylogeny_dir'], "filtered_spruce_tree.csv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/07-filter-spruce-trees.Rmd"
+    script: "../notebooks/filter-spruce-trees.Rmd"
 
 
 rule investigate_driver_mutations:
@@ -181,9 +181,9 @@ rule investigate_driver_mutations:
     """
     input: 
         join(config['bridging_dir'], "bridging_reads.csv"),
-        join(config['notebook_dir'], "07-filter-spruce-trees.html")
+        join(config['notebook_dir'], "filter-spruce-trees.html")
     output:
-        join(config['notebook_dir'], "08-investigate-driver-mutations.html")
+        join(config['notebook_dir'], "investigate-driver-mutations.html")
     params: 
         incsv=join(config['variant_dir'], "validated_variants.csv"),
         rawvariants=join(config['variant_dir'], "variants.csv"),
@@ -191,7 +191,7 @@ rule investigate_driver_mutations:
         annotations=config['MeVChiTok']['annotations'],
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/08-investigate-driver-mutations.Rmd"
+    script: "../notebooks/investigate-driver-mutations.Rmd"
 
 
 rule make_phylogenetic_tree:
@@ -200,7 +200,7 @@ rule make_phylogenetic_tree:
     a phylogenetic tree of the haplotypes.
     """
     input: 
-        notebook = join(config['notebook_dir'], "08-investigate-driver-mutations.html"),
+        notebook = join(config['notebook_dir'], "investigate-driver-mutations.html"),
         reference = join(config['ref_dir'], "MeVChiTok-SSPE.fa"),
     output:
         alignment = join(config['phylogeny_dir'], "haplotype-sequences.fa"),
@@ -209,7 +209,7 @@ rule make_phylogenetic_tree:
         incsv=join(config['variant_dir'], "validated_variants.csv"),
         spruce=join(config['phylogeny_dir'], "filtered_spruce_tree.csv")
     conda: "../envs/iqtree.yml"
-    notebook: "../notebooks/09-make-phylogenetic-tree.ipynb"
+    notebook: "../notebooks/make-phylogenetic-tree.ipynb"
 
 
 rule visualize_phylogenetic_tree:
@@ -221,12 +221,12 @@ rule visualize_phylogenetic_tree:
     input:
         tree=join(config['phylogeny_dir'], "haplotype-sequences.fa.treefile")
     output: 
-        join(config['notebook_dir'], "10-visualize-phylogenetic-tree.html")
+        join(config['notebook_dir'], "visualize-phylogenetic-tree.html")
     params: 
         incsv=join(config['variant_dir'], "validated_variants.csv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
-    script: "../notebooks/10-visualize-phylogenetic-tree.Rmd"
+    script: "../notebooks/visualize-phylogenetic-tree.Rmd"
 
 
 rule cluster_tissues_spatially:
@@ -237,12 +237,12 @@ rule cluster_tissues_spatially:
     In this notebook, I use PCA on the frequency of SNVs in each tissue.
     """
     input: 
-        join(config['notebook_dir'], "10-visualize-phylogenetic-tree.html")
+        join(config['notebook_dir'], "visualize-phylogenetic-tree.html")
     output: 
-        join(config['notebook_dir'], "11-cluster-tissues-spatially.html")
+        join(config['notebook_dir'], "cluster-tissues-spatially.html")
     params: 
         incsv=join(config['variant_dir'], "validated_variants.csv"),
         brain_coords=config['MeVChiTok']['brain_coords'],
         figures=join(config['figure_dir'])    
     conda: "../envs/r.yml"
-    script: "../notebooks/11-cluster-tissues-spatially.Rmd"
+    script: "../notebooks/cluster-tissues-spatially.Rmd"

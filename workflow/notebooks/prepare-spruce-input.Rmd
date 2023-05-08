@@ -1,0 +1,429 @@
+---
+title: "6. Prepare Spruce Input"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is look at how the haplotype frequencies add up in each compartment. In addition to this, we want to prepare the data for SPRUCE to see if we can use this frequency information to fit plausible phylogenetic trees. **The output of this notebook is a file formatted for the tool `MACHINA` and it's tree-building algorithm `SPRUCE`.**
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse", "foreach", "emdbook", "RColorBrewer", "data.table", "ggnetwork", "network")
+
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+if (exists("snakemake")) {
+
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = snakemake@params[["incsv"]]
+
+  # Depth per position
+  merged.depth = snakemake@input[[1]]
+  
+  # Original unfiltered variant calls
+  variant.data = snakemake@params[['rawvariants']]
+
+} else {
+
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = "../../results/variants/validated_variants.csv"
+
+  # Depth per position
+  merged.depth = "../../results/coverage/merged.depth"
+  
+  # Original unfiltered variant calls
+  variant.data = "../../results/variants/variants.csv"
+
+}
+
+```
+
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+if (exists("snakemake")) {
+  
+  # Data formatted for MACHINA/SPRUCE
+  machina.input.data = snakemake@params[["spruce"]]
+  
+  # Path to save figures
+  figure.dir = paste0(snakemake@params[['figures']], "/")
+  
+} else {
+
+  # Data formatted for MACHINA/SPRUCE
+  machina.input.data = "../../results/variants/spruce_input.tsv"
+  
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
+
+```
+
+```{r Load Data, message=F, warning=F, echo = F}
+
+# Read in the validated variants
+labeled.df = read_csv(updated.data, show_col_types = FALSE) %>% 
+  # For consistency, change the names of G1, G2, and G-1-1
+  mutate(Haplotype = case_when(
+    Haplotype == "genome-1" ~ "genome 01",
+    Haplotype == "genome-1-1" ~ "genome 1",
+    Haplotype == "genome-2" ~ "genome 2",
+    T ~ Haplotype
+  ))
+
+# Get the haplotype names
+haplotypes.label = labeled.df %>% 
+  select(SNP, Haplotype, Background) %>% 
+  distinct()
+
+# Expand the mutations to have a frequency for every tissue.
+expanded.df = labeled.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(labeled.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Get the mean frequency for each haplotype
+haplotype.mean = expanded.df %>% 
+  group_by(Haplotype, Tissue, Background) %>% 
+  summarize(AF = mean(AF))
+
+```
+
+## Frequency by Compartment
+
+One question is how the sum of frequencies of each haplotype looks across the tissue specimens. These shouldn't sum to more than the average frequency of their lineage (`Genome 1` or `Genome 2`). If they do, that means that some of these haplotypes could be descended from one another. 
+
+```{r Color Palletes, echo=F}
+
+# Make a color scheme for the haplotypes
+## Genome-1
+genome.1.haplotypes = c( "cluster 1", "cluster 2", "cluster 3", "cluster 4", "cluster 5", "cluster 7", "cluster 8", "genome 1", "genome 01")
+genome.1.colors = brewer.pal(length(genome.1.haplotypes), "Blues")
+names(genome.1.colors) = genome.1.haplotypes
+
+## Genome-2
+genome.2.haplotypes = c("cluster 9", "cluster 10", "cluster 11", "cluster 12", "cluster 13", "genome 2")
+genome.2.colors = brewer.pal(length(genome.2.haplotypes), "YlOrRd")
+names(genome.2.colors) = genome.2.haplotypes
+
+## Cluster 6
+cluster.6.haplotype = c("cluster 6")
+cluster.6.color = brewer.pal(8, "Purples")[8]
+names(cluster.6.color) = cluster.6.haplotype
+
+## Combine
+haplotype.colors = c(genome.1.colors, genome.2.colors, cluster.6.color)
+# names(haplotype.colors) = gsub(" ", "_", names(haplotype.colors ))
+haplotype.colors = c(haplotype.colors , "Anc" = "black")
+# cluster 1 is too light
+haplotype.colors['cluster 1'] = "#bdbebf"
+
+```
+
+```{r Haplotype and Tissue Order, echo=F}
+
+# Tissue order - roughly by the location in the brain 
+tissue.order = c(
+  "SSPE 1", 
+  "SSPE 2",
+  "Frontal Cortex 2", 
+  "Frontal Cortex 1", 
+  "Frontal Cortex 3", 
+  "Parietal Lobe",
+  "Temporal Lobe", 
+  "Occipital Lobe",
+  "Hippocampus",
+  "Internal Capsule", 
+  "Midbrain", 
+  "Upper Brain Stem",
+  "Brain Stem",
+  "Cerebellum",
+  "Cerebellum Nucleus"
+)
+
+# Haplotype order - sequential and by genotype/frequency
+haplotype.order = c("cluster 1",
+                    "cluster 2",
+                    "cluster 3",
+                    "cluster 4",
+                    "cluster 5",
+                    "cluster 6",
+                    "cluster 7",
+                    "cluster 8",
+                    "cluster 9",
+                    "cluster 10",
+                    "cluster 11",
+                    "cluster 12",
+                    "cluster 13")
+```
+
+### Genome 2
+
+What does this look like for Genome 2?
+
+```{r Genome 2 Clusters, warning=F, fig.align='center', fig.width=8, fig.height=5, echo=F}
+
+genome.2.clusters = haplotype.mean %>% 
+  filter(Background == "genome-2" & (!Haplotype %in% c("genome 2"))) %>% 
+  pull(Haplotype) %>% 
+  unique()
+
+genome.2.mean = haplotype.mean %>% 
+  filter(Haplotype == "genome 2")
+
+haplotype.mean %>% 
+    filter(Haplotype %in% genome.2.clusters) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, fill = (factor(Haplotype, levels = haplotype.order)), group = Haplotype)) +
+      geom_area() +
+      geom_line(data = genome.2.mean, aes(x = factor(Tissue, levels = tissue.order), col = (Haplotype), y = AF, group = Haplotype), linewidth = 2) +
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      scale_fill_manual(values = haplotype.colors, name="") +
+      scale_color_manual(values = haplotype.colors, guide = "none") +
+      theme_bw(16) +
+      theme(axis.text.x = element_text(angle = 35, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+ggsave(paste(figure.dir, "genome_2_clusters_pre_spruce.png", sep=""), width = 8, height = 5, dpi = 300)
+
+```
+
+Genome 2 doesn't have any obvious violations! In fact, the sum of haplotypes that we think are descended from Genome 2 adds up to nearly the average frequency of Genome 2 in all 15 specimens. This suggests that there isn't much evidence based on frequency that these haplotypes are related to one another beyond being directly descended from Genome 2. 
+
+### Genome 1
+
+What about Genome 1?
+
+```{r Genome 1 Clusters, warning=F, fig.align='center', fig.width=8, fig.height=5, echo=F}
+
+genome.1.clusters = haplotype.mean %>% 
+  filter(Background == "genome-1" & (!Haplotype %in% c("genome 1", "genome 01"))) %>% 
+  pull(Haplotype) %>% 
+  unique()
+
+genome.1.mean = haplotype.mean %>% 
+  filter(Haplotype == "genome 01")
+
+haplotype.mean %>% 
+  select(!Background) %>% 
+  filter(Haplotype != "subclonal") %>% 
+  pivot_wider(names_from = Haplotype, values_from = AF) %>%
+  pivot_longer(cols = -c(Tissue), names_to = "Haplotype", values_to = "AF") %>% 
+  filter(Haplotype %in% genome.1.clusters) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, fill = (factor(Haplotype, levels = haplotype.order)), group = Haplotype)) +
+      geom_area() +
+      geom_line(data = genome.1.mean, aes(x = factor(Tissue, levels = tissue.order), col = (Haplotype), y = AF, group = Haplotype), linewidth = 2) +
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Cluster") +
+      scale_fill_manual(values = haplotype.colors, name="") +
+      scale_color_manual(values = haplotype.colors, guide = "none") +
+      theme_bw(16) +
+      theme(axis.text.x = element_text(angle = 35, hjust=1)) + 
+      theme(strip.text.x = element_text(size = 12))
+
+ggsave(paste(figure.dir, "genome_1_clusters_pre_spruce.png", sep=""), width = 8, height = 5, dpi = 300)
+
+```
+In Genome 1 there is a violation in SSPE 2 where two clusters sum to a frequency greater than the frequency of Genome 1 in that specimen. This gives us reason to suspect that these clusters are related in some way. In particular, that cluster 5 is on the background of cluster 1. However, we want to confirm these relationships as best as possible using a systematic approach with the algorithm SPRUCE. Using SPRUCE, we can fit trees to the data based on haplotype frequency. Then, we can use bridging reads to filter out trees that link haplotypes that we know must be forbidden based on the overlapping reads. 
+
+## Prepare data for Spruce
+
+We need to format the input data for SPRUCE. To do this, we need to have a lower and upper bound for the haplotype frequency in each compartment. To calculate this, one approach is to use the min and max allele frequency of SNPs in each compartment for each haplotype as the lower and upper bounds.  
+
+```{r Format Data for SPRUCE, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
+
+# Read in the original variant calls 
+variant.df = read_csv(variant.data, show_col_types = F)
+
+# Add in the depth data
+merged.depth.df = fread(merged.depth) %>% 
+  select(!V1)
+
+# Join the depth data to the allele frequencies
+expanded.depth.df = expanded.df %>% 
+  select(!DP) %>% 
+  left_join(., distinct(select(labeled.df, POS, SNP, Tissue, Accession)), by = c("SNP", "Tissue")) %>% 
+  left_join(., merged.depth.df, by = c("POS", "Accession")) %>% 
+  # Rename the UBS
+  mutate(Tissue = if_else(Tissue == "UBS", "Upper Brain Stem", Tissue))
+
+# C4573T is missing in the Cerebellum due to low depth filters. Add this back in.
+C4573T.AF = variant.df %>%
+  mutate(SNP = paste(REF, POS, ALT, sep = "")) %>%
+  filter(SNP == "C4573T" & Tissue == 'Cerebellum') %>% 
+  pull(AF)
+
+expanded.depth.df = expanded.depth.df %>% 
+  mutate(AF = case_when(
+    SNP == "C4573T" & Tissue == 'Cerebellum' ~ C4573T.AF,
+    TRUE ~ AF
+  )) 
+
+# Make tissue index
+Tissue_index = expanded.depth.df %>% 
+  select(Tissue) %>% 
+  distinct() %>% 
+  mutate(tind = 1:n() - 1)
+
+# Make cluster index 
+Cluster_index = expanded.depth.df %>% 
+  select(Haplotype) %>% 
+  distinct() %>% 
+  filter(!Haplotype %in% c("both", "subclonal")) %>% 
+  mutate(cind = 1:n() - 1) %>%
+  add_row(Haplotype = "Anc", cind = 16) 
+
+# Calculate the MAF along with some variance (in this case the min and max in each compartment) for wiggle room. 
+spruce.data.df = expanded.depth.df %>%
+  filter(!Haplotype %in% c("both", "subclonal")) %>% 
+  group_by(Haplotype, Tissue) %>% 
+  # use this formulation for cluster allele frequency, because it puts less weight on low read depth positions
+  summarize(MAF = mean(AF),
+            min = min(AF), 
+            max = max(AF)) %>% 
+  # MACHINA wants an upper and lower bound on what the allele frequencies are
+  mutate(lb = pmax(0, min), ub = pmin(1, max))
+ 
+spruce.data.df %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue.order), y = MAF, group = Haplotype, ymin=lb, ymax=ub)) + 
+    geom_ribbon(alpha=0.2, colour = "grey") +
+    geom_line() +
+    facet_wrap(~Haplotype) + 
+    xlab("Tissue") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+Another approach to calculate the lower and upper bound on mean haplotype frequency is to apply some downscale factor to depth and then use depth to calculate the variance. Let's try this below.
+
+```{r Alternative Format Data for SPRUCE, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=T}
+
+down.wieght = 0.0005
+
+spruce.data.alt.df = expanded.df %>%
+  group_by(Haplotype, Tissue) %>%
+  filter(!Haplotype %in% c("both", "subclonal")) %>%
+  # Add a psuedo-count to depth 
+  mutate(DP = DP + 1) %>% 
+  # Add back the uncovered G1 SNP
+  mutate(AF = case_when(
+    SNP == "C4573T" & Tissue == 'Cerebellum' ~ C4573T.AF,
+    TRUE ~ AF
+  )) %>% 
+  # Rename the UBS
+  mutate(Tissue = if_else(Tissue == "UBS", "Upper Brain Stem", Tissue)) %>% 
+  # use this formulation for cluster allele frequency, because it puts less weight on low read depth positions
+  summarize(MAF = sum(AF * DP)/sum(DP),
+            var = sqrt(MAF * (1 - MAF) / (sum(DP) * down.wieght))) %>%
+  # MACHINA wants an upper and lower bound on what the allele frequencies are
+  mutate(lb = pmax(0, MAF - var), ub = pmin(1, MAF + var))
+
+spruce.data.alt.df %>% 
+  ggplot(aes(x = factor(Tissue, levels = tissue.order), y = MAF, group = Haplotype, ymin=lb, ymax=ub)) + 
+    geom_ribbon(alpha=0.2, colour = "grey") +
+    geom_line() +
+    facet_wrap(~Haplotype) + 
+    xlab("Tissue") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+
+```
+
+Currently, it's not clear exactly which method is optimal. One approach takes into account the depth in the tissue to get variance, the other takes into account the variance in frequency in each tissue. We'll stick with the frequency-based approach for now. 
+
+```{r Write out Data, echo = T}
+
+# Add the ancestor back in or it won't connect g1 and g2
+with.anc.df = bind_rows(spruce.data.df, 
+                    Tissue_index %>%
+                      select(-tind) %>% 
+                      mutate(Haplotype = "Anc", MAF = NA, SD = NA, lb = 1, ub = 1)
+                    )
+
+# Merge the average cluster frequencies with the index information that spruce wants
+spruce.output = left_join(left_join(with.anc.df, Tissue_index), Cluster_index) %>% 
+    ungroup() %>%
+    # need to substitute out spaces
+    mutate(Tissue = gsub(" ", "_", Tissue)) %>%
+    mutate(Haplotype = gsub(" ", "_", Haplotype)) %>%
+    mutate(sind = tind, sample = Tissue) %>%
+    select(tind, Tissue, sind, sample, cind, Haplotype, lb, ub)  %>% 
+    arrange(tind, cind) %>% 
+    mutate(ub = pmax(lb, ub)) 
+
+head(spruce.output) %>% 
+  kable(., caption = "Data for SPRUCE")
+
+```
+
+```{r Write out Machina inputs, echo = T}
+
+## ==== Write Output data ==== ##
+
+# Header needs to specify these variables
+write(
+  paste0(
+    nrow(Tissue_index),
+    "\n", nrow(Tissue_index),
+    "\n", nrow(Cluster_index),
+    "\n#", collapse = "" ),
+  machina.input.data
+)
+
+# Then write the cluster frequencies 
+write.table(spruce.output,
+            machina.input.data,
+            sep = "\t", 
+            quote = FALSE, 
+            row.names = FALSE,
+            col.names = FALSE,
+            append = TRUE)
+
+# Run this command
+paste0("generatemutationtrees ", machina.input.data, " > ", "../../results/variants/spruce_output.tsv")
+```
+

@@ -66,6 +66,3 @@ rule bwa_align:
             samtools sort -o {output.bam} - 
         samtools index {output.bam}
         """
-
-
-    

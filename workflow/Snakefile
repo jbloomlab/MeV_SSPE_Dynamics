@@ -28,7 +28,7 @@ samples = list(set(SAMPLE_DF['Run']))
 
 rule all:
     input: 
-        join(config['notebook_dir'], "11-cluster-tissues-spatially.html")
+        join(config['notebook_dir'], "cluster-tissues-spatially.html"),
       
 rule clean:
     shell:
@@ -48,6 +48,8 @@ include: "rules/preprocess-reads.smk"
 include: "rules/first-alignment.smk"
 # 3. Build and Align reads an 'SSPE' genome 
 include: "rules/second-alignment.smk"
+# 4. Run piolt analysis on SSPE 1 sample
+include: "rules/pilot-analysis.smk"
 # 4. Calculate coverage of the sequencing reads
 include: "rules/calculate-coverage.smk"
 # 5. Call variants using the 'SSPE' reference genome
