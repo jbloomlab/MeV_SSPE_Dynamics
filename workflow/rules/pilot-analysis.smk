@@ -1,7 +1,7 @@
 """
-### ======= Pilot Analysis of SSPE 1 brain sample ======= ###
+### ======= Pilot Analysis of SSPE 1 & 2 brain samples ======= ###
 This snakemake file uses the MeVChiTok genome as a reference and calls variants 
-on the SSPE 1 brain sample before it's been realigned to the patient specific 
+on the SSPE 1 and SSPE 2 brain samples before being realigned to the patient specific 
 reference. 
 
 # Author: Will Hannon 
@@ -35,9 +35,9 @@ rule pilot_samtools_mpileup:
 
     This is necessary for variant calling with VarScan.
     """
-    input: bam = join(config['align_dir'], "SSPE_1", "SSPE_1.sorted.bam"),
+    input: bam = join(config['align_dir'], "{sample}", "{sample}.sorted.bam"),
            genome = join(config['index_dir']['samtools'], 'MeVChiTok.fa')
-    output: join(config['pilot_dir'], "SSPE_1.mpileup.txt")
+    output: join(config['pilot_dir'], "{sample}.mpileup.txt")
     params: score = config['BQ'],
             maxdepth = config['maxdepth']
     conda: '../envs/samtools.yml'
@@ -52,9 +52,9 @@ rule pilot_varscan_calling:
     """
     input: 
         varscan = join(config['tools'], "VarScan.v2.4.0.jar"),
-        pileup = join(config['pilot_dir'], "SSPE_1.mpileup.txt")
+        pileup = join(config['pilot_dir'], "{sample}.mpileup.txt")
     output: 
-        variants = join(config['pilot_dir'], "SSPE_1.varscan.vcf")
+        variants = join(config['pilot_dir'], "{sample}.varscan.vcf")
     params:
         minimum_coverage = config['min_coverage'],
         minumum_supporting_reads = config['min_reads_supporting'],
@@ -81,8 +81,8 @@ rule pilot_vcf_to_table:
     Convert the VCF files to tables for easy data
     analysis in R or Python.
     """
-    input: join(config['pilot_dir'], "SSPE_1.varscan.vcf")
-    output: join(config['pilot_dir'], "SSPE_1.varscan.txt")
+    input: join(config['pilot_dir'], "{sample}.varscan.vcf")
+    output: join(config['pilot_dir'], "{sample}.varscan.txt")
     conda: '../envs/gatk.yml'    
     shell:
         """
@@ -104,8 +104,8 @@ rule pilot_add_metadata:
     This rule adds in the metadata from the csv file
     that is used to run the experiment. 
     """
-    input: join(config['pilot_dir'], "SSPE_1.varscan.txt")
-    output: join(config['pilot_dir'], "SSPE_1.varscan.csv")
+    input: join(config['pilot_dir'], "{sample}.varscan.txt")
+    output: join(config['pilot_dir'], "{sample}.varscan.csv")
     params: metadata = config['samples']['file']
     conda: '../envs/r.yml'
     script: "../scripts/add_metadata.R"
@@ -115,6 +115,6 @@ rule pilot_aggregate_variants:
     """
     This rule aggregates all of the variants. 
     """
-    input: expand([join(config['pilot_dir'], "SSPE_1.varscan.csv")])
+    input: expand(join(config['pilot_dir'], "{sample}.varscan.csv"), sample = ['SSPE_1', 'SSPE_2'])
     output: join(config['pilot_dir'], "pilot_variants.csv")
     run: aggregate_csv(input, output)
