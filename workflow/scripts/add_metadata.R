@@ -58,7 +58,16 @@ if (!empty){
   # extract metadata from filepath 
   sample.info = strsplit(basename(vcf.filepath), "[.]")[[1]]
   sample.name = sample.info[1]
-  sample.caller = sample.info[2]
+
+  # If the the second element is either 'fwd' or 'rev', then sample.caller is the third element
+  if (sample.info[2] == "fwd" | sample.info[2] == "rev"){
+    sample.direction = sample.info[2]
+    sample.caller = sample.info[3]
+  } else{
+    sample.direction = NULL
+    sample.caller = sample.info[2]
+  }
+    
 
   # different extraction depending on columns in the original VCF file
   if (sample.caller == "lofreq"){
@@ -83,7 +92,7 @@ if (!empty){
       # add sample ID
       mutate(Accession = sample.name) %>%
       mutate(Caller = sample.caller) 
-    
+
   } else if (sample.caller == "varscan"){
     
     # read in vcf table
@@ -133,7 +142,12 @@ if (!empty){
   
   # Join with metadata
   sample.df = left_join(sample.df, metadata.df, by = "Accession")
-  
+
+  # If sample.direction isn't NULL, add it to the table
+  if (!is.null(sample.direction)){
+    sample.df = sample.df %>% mutate(Direction = sample.direction)
+  }
+    
   # Write out to a file
   write.csv(sample.df, file = snakemake@output[[1]], row.names=FALSE, sep="\t")
   

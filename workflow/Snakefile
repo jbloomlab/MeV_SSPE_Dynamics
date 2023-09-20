@@ -29,6 +29,8 @@ samples = list(set(SAMPLE_DF['Run']))
 rule all:
     input: 
         join(config['notebook_dir'], "cluster-tissues-spatially.html"),
+        join(config['split_dir'], "merged.split.depth"),
+        join(config['split_dir'], "split_read_variants.csv")
       
 rule clean:
     shell:
@@ -58,4 +60,5 @@ include: "rules/call-variants.smk"
 include: "rules/bridging-reads.smk"
 # 7. Run R notebooks that cluster and haplotype variants by frequency
 include: "rules/process-variants.smk"
-
+# 8. Does strand origin (+/-) impact variant frequency?
+include: "rules/strand-origin.smk"
