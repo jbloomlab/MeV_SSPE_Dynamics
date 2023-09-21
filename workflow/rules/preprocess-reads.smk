@@ -90,3 +90,25 @@ rule filter_reads:
             t={threads} \
             &> {params.error}
         """
+
+
+rule merge_filter_stats: 
+    """
+    Merge the filter stats into a single file.
+    """
+    input: expand(join(config['filter_dir'], "{accession}", "{accession}.filter.stats"), accession = samples)
+    output: join(config['filter_dir'], "filter_stats.csv")
+    run:
+        # Read in the input files and concatenate them into a single DataFrame ignoring the comments
+        column_names = ['Virus', 'Reads', 'Percent']
+        dfs = []
+        for file in input:
+            df = pd.read_csv(file, sep='\t', comment='#', header=None, names=column_names)
+            accession = os.path.basename(os.path.dirname(file))
+            df['Accession'] = accession
+            dfs.append(df)
+        
+        output_df = pd.concat(dfs, ignore_index=True)
+        
+        # Write the output DataFrame to a file
+        output_df.to_csv(str(output), index=False)

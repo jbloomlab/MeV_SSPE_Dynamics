@@ -28,7 +28,8 @@ samples = list(set(SAMPLE_DF['Run']))
 
 rule all:
     input: 
-        join(config['notebook_dir'], "analyze-strand-origin.html")
+        join(config['notebook_dir'], "analyze-strand-origin.html"),
+        join(config['filter_dir'], "filter_stats.txt")
       
 rule clean:
     shell:
