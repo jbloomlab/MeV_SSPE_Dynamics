@@ -253,6 +253,28 @@ no.filter.pivot.df %>%
 
 ```
 
+Let's see how the contribution from each tissue plays into this:
+
+```{r Comparison By Tissue, fig.align='center', fig.width=15, fig.height=15}
+
+no.filter.pivot.df %>% 
+  ggplot(aes(x = AF_positive, y = AF_negative)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    facet_wrap(~Tissue) +
+    xlab("(+) Sense RNA") + 
+    ylab("(-) Sense RNA") + 
+    theme_bw(14) +
+    # Compute and add the Pearson correlation coefficient as an annotation
+    annotate("text", x = 0.5, y = 1, 
+             label = sprintf("R = %.2f", cor(no.filter.pivot.df$AF_positive, no.filter.pivot.df$AF_negative, method = "pearson")),
+             hjust = 1.1, vjust = 2) 
+
+
+```
+
+It looks like the correlation is the worst in the Cerebellum and Cerebellum Nucleus samples. This isn't so surprising since these samples had very few reads.
+
 One of the most likely things to impact this is how well sampled a SNP is in a given tissue. Therefore, we need to filter out `Tissue`/`SNP` pairs where the `SNP` is very low depth in that `Tissue`. Ideally, we only want to observe biological differences in allele frequency between strands, not sampling differences. Let's see what happens when we apply a relatively stringent filter on the number of observation of variants in the validated data. 
 
 ```{r Sampling is driving the differences, fig.align='center', fig.width=5, fig.height=5}
