@@ -13,7 +13,7 @@ rule split_bam:
         bai = join(config['split_dir'], "{accession}", "{accession}.{direction}.sorted.bam.bai"),
         tmp_bam = temp(join(config['split_dir'], "{accession}", "{accession}.{direction}.tmp.sorted.bam"))
     params:
-        flag = lambda wildcards: "99" if wildcards.direction == "fwd" else "147"
+        flag = lambda wildcards: "99,147" if wildcards.direction == "fwd" else "163,83"
     threads: config['threads']['max_cpu']
     conda: '../envs/align.yml'
     shell:

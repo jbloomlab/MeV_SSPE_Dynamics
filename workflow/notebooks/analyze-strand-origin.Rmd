@@ -1,0 +1,294 @@
+---
+title: "12. Analyze Strand Origin"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to analyze variants and coverage split by the strand of origin (+/- sense).
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse", "data.table")
+
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+if (exists("snakemake")) {
+
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = snakemake@params[["incsv"]]
+  
+  # Variants split by positive and negative strand 
+  split.variant.data = snakemake@input[[3]]
+  
+  # Coverage by split by positive and negative strand
+  split.coverage.data = snakemake@input[[2]]
+  
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = snakemake@params[['annotations']]
+
+} else {
+
+  # Data from lofreq and varscan labeled with subclonal haplotypes
+  updated.data = "../../results/variants/validated_variants.csv"
+  
+  # Variants split by positive and negative strand 
+  split.variant.data = "../../results/split/split_read_variants.csv"
+  
+  # Coverage by split by positive and negative strand
+  split.coverage.data = "../../results/split/merged.split.depth"
+  
+  # Annotations for the standard Measles ORFs ~ for making pretty figures.
+  annotations.filepath = "../../config/annotations.csv"
+
+}
+
+```
+
+```{r Outputs, echo=T}
+
+## ==== File paths output data ==== ##
+
+if (exists("snakemake")) {
+  
+  # Path to save figures
+  figure.dir = paste0(snakemake@params[['figures']], "/")
+  
+} else {
+
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+  
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
+
+```
+
+## Read Coverage by Strand
+
+First, I'll investigate how read coverage differs by the strand of origin. Reads where split into two different `BAM` files by the following bit wise flags: 
+  1. Forward Strand: 99
+  2. Reverse Strand: 147
+  
+Then the coverage was determined using `samtools depth`:
+
+```
+samtools depth -m 0 -a -q {params.score} -g DUP {input.bam} > {output.coverage}
+```
+
+```{r Read Coverage Data, echo=TRUE, warning=FALSE}
+
+# Import and process information about coverage/read depth
+split.coverage.df = fread(split.coverage.data) %>% 
+  select(!V1) %>% 
+  mutate(Tissue = str_replace_all(Accession, "_", " "))
+
+split.coverage.df %>% 
+  head()
+```
+
+
+```{r Annotations, message = F, warning = F, echo = F}
+
+# Import genome annotations
+annotations.df = read_csv(annotations.filepath, show_col_types = FALSE)
+
+# Get the interval positions for these genes 
+N = annotations.df %>% dplyr::filter(Locus == "N")
+P.V.C = annotations.df %>% dplyr::filter(`Protein Name` == "phosphoprotein")
+M = annotations.df %>% dplyr::filter(Locus == "M")
+F. = annotations.df %>% dplyr::filter(Locus == "F")
+H = annotations.df %>% dplyr::filter(Locus == "H")
+L = annotations.df %>% dplyr::filter(Locus == "L")
+
+```
+
+```{r Plot Coverage Data, echo=TRUE, warning=FALSE, fig.align='center', fig.height=15, fig.width=8}
+
+split.coverage.df %>% 
+  mutate(Tissue = if_else(Tissue == "UBS", "Upper Brain Stem", Tissue)) %>% 
+  filter(!Tissue %in% c("SSPE 1", "SSPE 2")) %>% 
+  ggplot(aes(x = POS, y = DP, col = Direction)) + 
+    geom_line() + 
+    facet_wrap(~Tissue, ncol = 2) + 
+    scale_y_log10() +
+    scale_color_manual(values = c("#307EC2", "#B63F3E"), labels = c("Positive", "Negative")) +
+    xlab("Position") +
+    ylab("Depth") + 
+  
+    # == Annotations of genes == #
+  
+    # 3' Start
+    annotate(geom = "text", x = (N$Start - 400), y = .25, label = "3'", size = 2.5) +
+
+    # Nucleoprotein
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#d97634", col = "black", size = .1) +
+    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = .25, label = "N", family = "helvetica", size = 2.5) +
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 1e6 ,
+                   alpha = .05, fill = "#d97634", size = .1) +  
+    # P/V/C
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#fcff3d", col = "black", size = .1) +
+    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = .25, label = "P/V/C", family = "helvetica", size = 2.5) +
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 1e6 ,
+               alpha = .05, fill = "#fcff3d", size = .1) +
+    # Matrix protein
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#0db51b", col = "black", size = .1) +
+    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = .25, label = "M", family = "helvetica", size = 2.5)  +
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 1e6 ,
+               alpha = .05, fill = "#0db51b", size = .1) +
+    # Fusion protein
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#6A3D9A", col = "black", size = .1) +
+    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = .25, label = "F", family = "helvetica", size = 2.5) +
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 1e6 ,
+               alpha = .05, fill = "#6A3D9A", size = .1) +
+    # Hemagluttinin
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#0251d9", col = "black", size = .1) +
+    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = .25, label = "H", family = "helvetica", size = 2.5) +
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 1e6,
+               alpha = .05, fill = "#0251d9", size = .1) +
+    # Large protein
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = .5 ,
+               alpha = .5, fill = "#bf1515", col = "black", size = .1) +
+    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = .25, label = "L", family = "helvetica", size = 2.5) +
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 1e6 ,
+               alpha = .05, fill = "#bf1515", size = .1) +
+    
+    # 5' Start
+    annotate(geom = "text", x = (L$Stop + 400), y =  .25, label = "5'", size = 2.5) +
+
+    theme_classic() 
+
+```
+
+## Does strand origin change allele frequency? 
+
+It's interesting to see that coverage differs over the genome by strand. This is consistent with the presence of genomic RNA and messenger RNA that's subject to a gradient of transcription. Let's also see if there is a clear difference in the frequency of alleles between strands. 
+
+We'll use the SNPs that we've already validated and processed in the first notebook to subset the SNPs called for each strand. We're really only interested to see if strand origin effects this subset of SNPs. 
+
+```{r Process Variant Calls, echo=T}
+
+# Read in the validated variant set called on *both* strands
+validated.variants.df = read_csv(updated.data, show_col_types = F)
+# Get the validated SNPs to filter the SNPs from each strand 
+validated.snps = validated.variants.df %>% 
+  mutate(ID = paste(Accession, SNP, sep = "-")) %>% 
+  pull(ID) %>% 
+  unique()
+
+# Read in the strand-origin variants (from both varscan and lofreq)
+split.variants.df = read_csv(split.variant.data, show_col_types = F) %>% 
+  # drop the columns we don't need
+  select(!c(Virus, Host, R1, R2, Sample)) %>% 
+  # rename the directions to positive and negative
+  mutate(Direction = if_else(Direction == "fwd", "positive", "negative"),
+         SNP = paste0(REF, POS, ALT),
+         ID = paste(Accession, SNP, sep = "-")) %>% 
+  # filter to get the set of validated variants 
+  filter(ID %in% validated.snps)
+
+```
+
+The main thing we're interested in is whether the origin of the strand (positive or negative sense RNA) impacts the frequency of the SNPs. 
+
+```{r Does Strand Change Frequency, fig.align='center', fig.width=5, fig.height=5}
+
+no.filter.pivot.df = split.variants.df %>%
+  select(AF, DP, Tissue, Direction, SNP, ALT, POS, REF) %>% 
+  pivot_wider(
+    names_from = Direction, 
+    values_from = c(AF, DP), 
+    values_fill = list(AF = 0, DP = 0)  
+  ) 
+
+no.filter.pivot.df %>% 
+  ggplot(aes(x = AF_positive, y = AF_negative)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    xlab("(+) Sense RNA") + 
+    ylab("(-) Sense RNA") + 
+    theme_bw(14) +
+    # Compute and add the Pearson correlation coefficient as an annotation
+    annotate("text", x = 0.5, y = 1, 
+             label = sprintf("R = %.2f", cor(no.filter.pivot.df$AF_positive, no.filter.pivot.df$AF_negative, method = "pearson")),
+             hjust = 1.1, vjust = 2) +
+    coord_fixed(ratio = 1)
+
+```
+
+One of the most likely things to impact this is how well sampled a SNP is in a given tissue. Therefore, we need to filter out `Tissue`/`SNP` pairs where the `SNP` is very low depth in that `Tissue`. Ideally, we only want to observe biological differences in allele frequency between strands, not sampling differences. Let's see what happens when we apply a relatively stringent filter on the number of observation of variants in the validated data. 
+
+```{r Sampling is driving the differences, fig.align='center', fig.width=5, fig.height=5}
+
+# Get the validated SNPs to filter the SNPs from each strand with a depth filter
+high.depth.snps = validated.variants.df %>% 
+  filter(DP >= 3000) %>% 
+  mutate(ID = paste(Accession, SNP, sep = "-")) %>% 
+  pull(ID) %>% 
+  unique()
+
+depth.filter.pivot.df = split.variants.df %>%
+  # Add a stringent filter for depth
+  filter(ID %in% high.depth.snps) %>% 
+  select(AF, DP, Tissue, Direction, SNP, ALT, POS, REF) %>% 
+  pivot_wider(
+    names_from = Direction, 
+    values_from = c(AF, DP), 
+    values_fill = list(AF = 0, DP = 0)  
+  ) 
+
+depth.filter.pivot.df %>% 
+  ggplot(aes(x = AF_positive, y = AF_negative)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    xlab("(+) Sense RNA") + 
+    ylab("(-) Sense RNA") + 
+    theme_bw(14)  +
+    # Compute and add the Pearson correlation coefficient as an annotation
+    annotate("text", x = 0.5, y = 1, 
+             label = sprintf("R = %.2f", cor(depth.filter.pivot.df$AF_positive, depth.filter.pivot.df$AF_negative, method = "pearson")),
+             hjust = 1.1, vjust = 2) +
+    coord_fixed(ratio = 1)
+
+
+```
+
+It's clear that when we increase the filter on the number of observations, the correlation improves (although it was already quite good). This means that any difference between strands is due to sampling and not a biological difference. 
+

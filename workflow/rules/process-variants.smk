@@ -246,3 +246,22 @@ rule cluster_tissues_spatially:
         figures=join(config['figure_dir'])    
     conda: "../envs/r.yml"
     script: "../notebooks/cluster-tissues-spatially.Rmd"
+
+
+rule analyze_strand_origin:
+    """
+    The goal of this notebook is to see if the strand 
+    sense (+ or -) impacts variant calling and coverage.
+    """
+    input: 
+        join(config['notebook_dir'], "visualize-phylogenetic-tree.html"),
+        join(config['split_dir'], "merged.split.depth"),
+        join(config['split_dir'], "split_read_variants.csv")
+    output: 
+        join(config['notebook_dir'], "analyze-strand-origin.html")
+    params: 
+        incsv=join(config['variant_dir'], "validated_variants.csv"),
+        annotations=config['MeVChiTok']['annotations'],
+        figures=join(config['figure_dir'])    
+    conda: "../envs/r.yml"
+    script: "../notebooks/analyze-strand-origin.Rmd"

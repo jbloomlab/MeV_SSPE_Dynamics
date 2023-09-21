@@ -28,9 +28,7 @@ samples = list(set(SAMPLE_DF['Run']))
 
 rule all:
     input: 
-        join(config['notebook_dir'], "cluster-tissues-spatially.html"),
-        join(config['split_dir'], "merged.split.depth"),
-        join(config['split_dir'], "split_read_variants.csv")
+        join(config['notebook_dir'], "analyze-strand-origin.html")
       
 rule clean:
     shell:
