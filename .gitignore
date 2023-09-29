@@ -16,6 +16,7 @@ config/*
 !config/ref/
 config/ref/*
 !config/ref/MeVChiTok.fa
+!config/ref/MeVChiTok-SSPE.fa
 
 # Selectively ignore files in the results directory
 results/*
