@@ -8,6 +8,7 @@ Date: 2022
 #### ----------------------- Imports ----------------------- ####
 
 import pandas as pd 
+import numpy as np
 import itertools
 from os.path import join
 from snakemake.utils import min_version
@@ -29,7 +30,7 @@ samples = list(set(SAMPLE_DF['Run']))
 rule all:
     input: 
         join(config['notebook_dir'], "analyze-strand-origin.html"),
-        join(config['filter_dir'], "filter_stats.txt")
+        join(config['coverage_dir'], "merged.stats")
       
 rule clean:
     shell:
