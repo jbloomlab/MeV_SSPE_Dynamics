@@ -215,7 +215,7 @@ split.coverage.df %>%
     theme_classic() +
     theme(legend.position = "bottom") 
 
-ggsave(paste(figure.dir, "figure-4.png"), width = 13, height = 12, dpi = 300)
+ggsave(paste(figure.dir, "figure-4.tiff"), device = "tiff", width = 13, height = 12, dpi = 300)
 
 ```
 
@@ -241,7 +241,7 @@ split.coverage.df %>%
     theme_void() +
     theme(legend.position = "bottom")
 
-ggsave(paste(figure.dir, "figure-4-pies.png"), width = 6, height = 6, dpi = 300)
+ggsave(paste(figure.dir, "figure-4-pies.tiff"), device = "tiff", width = 6, height = 6, dpi = 300)
 
 ```
 
@@ -307,7 +307,7 @@ split.coverage.df %>%
     theme_classic()  +
     theme(legend.position = "bottom") 
 
-ggsave(paste(figure.dir, "figure-1c.png"), width = 8, height = 6, dpi = 300)
+ggsave(paste(figure.dir, "figure-1d.tiff"), device = "tiff", width = 8, height = 6, dpi = 300)
 
 ```
 

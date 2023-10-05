@@ -370,7 +370,7 @@ selected.variants.df %>%
     scale_x_continuous(limits=c(-400,16200), breaks = c(0, 5000, 10000, 15000)) +
     theme(legend.position = "none") 
 
-ggsave(paste(figure.dir, "extended-data-figure-5.png"), width = 18, height = 12, dpi = 300)
+ggsave(paste(figure.dir, "extended-data-figure-7.tiff"), device = "tiff", width = 18, height = 12, dpi = 300)
 
 ```
 

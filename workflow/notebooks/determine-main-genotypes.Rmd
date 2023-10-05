@@ -325,7 +325,7 @@ ggplot(data = binnned.snps, aes(x = POS, y = AF, color = Genotype, shape = Shape
   scale_y_continuous(breaks=c(0, 0.25, 0.5, 0.75, 1.0)) +
   theme(legend.position = "bottom") 
 
-ggsave(paste(figure.dir, "figure-2.png", sep = ""), width = 11, height = 10, dpi = 300)
+ggsave(paste(figure.dir, "figure-2.tiff", sep = ""), device = "tiff", width = 11, height = 10, dpi = 300)
 
 ```
 

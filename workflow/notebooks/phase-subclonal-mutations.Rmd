@@ -766,7 +766,7 @@ ggplot(data = core.snps, aes(x = factor(Tissue, levels = (expanded_tissue_order)
   theme_bw(20) +
   theme(axis.text.x = element_text(angle = 35, hjust=1)) 
   
-ggsave(paste(figure.dir, "figure-5.png"), width = 14, height = 7, dpi = 300)
+ggsave(paste(figure.dir, "figure-5.tiff"), device = "tiff", width = 14, height = 7, dpi = 300)
 
 ```
 
@@ -811,7 +811,6 @@ main.genotypes %>%
     theme_bw(18) +
     theme(legend.position="bottom")
   
-# ggsave(paste(figure.dir, "figure-6-without-GFC2.png"), width = 15, height = 8, dpi = 300)
 
 ```
 

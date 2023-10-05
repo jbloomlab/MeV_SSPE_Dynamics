@@ -708,7 +708,7 @@ haplotype.mean %>%
       theme(axis.text.x = element_text(angle = 35, hjust=1)) + 
       theme(strip.text.x = element_text(size = 12))
 
-ggsave(paste(figure.dir, "extended-data-figure-7.png", sep=""), width = 8, height = 10)
+ggsave(paste(figure.dir, "extended-data-figure-11.tiff", sep=""), device = "tiff", width = 8, height = 10)
 
 ```
 
@@ -813,7 +813,7 @@ expanded.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(legend.position="bottom")
 
-ggsave(paste(figure.dir, "extended-data-figure-9.png", sep=""), width = 20, height = 15)
+ggsave(paste(figure.dir, "extended-data-figure-10.tiff", sep=""), device = "tiff", width = 20, height = 15)
 
 ```
 

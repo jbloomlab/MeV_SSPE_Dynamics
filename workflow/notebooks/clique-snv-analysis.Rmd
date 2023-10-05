@@ -249,7 +249,7 @@ g1.g2.linkage.df %>%
     theme_bw() +
     theme(legend.position = "bottom")
 
-ggsave(paste(figure.dir, "reviewer-response-cliqueSNV.png"), width = 6, height = 4, dpi = 300)
+ggsave(paste(figure.dir, "extended-data-figure-6.tiff"), device="tiff" ,width = 6, height = 4, dpi = 300)
 
 ```
 
