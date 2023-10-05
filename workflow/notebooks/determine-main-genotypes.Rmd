@@ -424,6 +424,8 @@ strong.corr.df %>%
     ylab("Count") +
     theme_bw(15)
 
+ggsave(paste(figure.dir, "correlation.png", sep=""), width = 6, height = 4)
+
 ```
 
 ```{r Filter Correlation, echo=T, warning=F, message=F}
@@ -480,6 +482,7 @@ kmedoids.SNPs %>%
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     theme(legend.position = "none") 
 
+ggsave(paste(figure.dir, "main-clusters.png", sep=""), width = 14, height = 10)
 ```
 
 It's clear from the above plot that mutations grouped in clusters have very similar frequencies across tissues as expected. What's interesting is that clusters 2 and 3 are found at very similar frequencies in every tissue but the `Frontal Cortex 2` sample. It is likely that this represents an early divergence of one of the major genotypes.

@@ -48,6 +48,9 @@ if (exists("snakemake")) {
   
   # Counts of all reads bridging pairs of SNP positions
   bridging.data = snakemake@input[[2]]
+  
+  # Original unfiltered variant calls
+  variant.data = snakemake@params[['rawvariants']]
 
 } else {
 
@@ -59,6 +62,9 @@ if (exists("snakemake")) {
   
   # Counts of all reads bridging pairs of SNP positions
   bridging.data = "../../results/bridging/bridging_reads.csv"
+  
+  # Original unfiltered variant calls
+  variant.data = "../../results/variants/variants.csv"
 
 }
 
@@ -475,7 +481,22 @@ for (tree.name in unique(valid.trees.df$tree)) {
 }
 
 ```
-It looks like we can confidently say that `cluster 8` is **not** descended from `cluster 2`. This means that can rule out all but a single single valid tree. 
+It looks like we can confidently say that `cluster 8` is **not** descended from `cluster 2`. This means that can rule out all but a single single valid tree. Based on this final tree assignment, we've renamed the clusters below. In the renamed cluster scheme, 8 becomes cluster 6. 
+
+```{r Cluster 8 and Cluster 2 are non-nesting}
+
+labled.bridging.df %>%  
+  filter((snp_1 == "2343" & snp_2 == "2543") | (snp_1 == "2349" & snp_2 == "2543") | (snp_1 == "5368" & snp_2 == "5405")) %>% 
+  filter(Tissue %in% c("Cerebellum Nucleus", "Cerebellum", "Brain Stem")) %>% 
+  mutate(snp_pair = paste(snp_1, snp_2, sep = "-")) %>% 
+  select(`00`, `10`, `01`, `11`, hap_1, hap_2, snp_pair) %>% 
+  group_by(snp_pair) %>% 
+  summarize(neither = sum(`00`), cluster_2 = sum(`10`), cluster_8 = sum(`01`), both = sum(`11`)) %>% 
+  select(!snp_pair) %>% 
+  colSums()
+
+```
+
 
 ```{r Valid Tree, echo = F}
 
@@ -691,4 +712,149 @@ ggsave(paste(figure.dir, "extended-data-figure-7.png", sep=""), width = 8, heigh
 
 ```
 
+```{r Extended data figure 9, fig.align='center', fig.width=20, fig.height=15, echo=F}
+
+# Haplotype order - sequential and by genotype/frequency
+full.haplotype.order = c(
+                        "G-01",
+                        "G-1",
+                        "G-FC2",
+                        "cluster 1",
+                        "cluster 1a",
+                        "cluster 2",
+                        "cluster 3",
+                        "cluster 4",
+                        "cluster 5",
+                        "cluster 6",
+                        "G-2",
+                        "cluster 7",
+                        "cluster 8",
+                        "cluster 9",
+                        "cluster 10",
+                        "cluster 11"
+                        )
+
+# C4573T is missing in the Cerebellum due to low depth filters. Add this back in.
+# Read in the original variant calls 
+variant.df = read_csv(variant.data, show_col_types = F)
+C4573T.AF = variant.df %>%
+  mutate(SNP = paste(REF, POS, ALT, sep = "")) %>%
+  filter(SNP == "C4573T" & Tissue == 'Cerebellum') %>% 
+  pull(AF)
+expanded.df = expanded.df %>% 
+  mutate(AF = case_when(
+    SNP == "C4573T" & Tissue == 'Cerebellum' ~ C4573T.AF,
+    TRUE ~ AF
+  )) 
+
+haplotype.mean.frequency = expanded.df %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  # Rename to the paper scheme
+  mutate(Haplotype = case_when(
+    Haplotype == "cluster 1" ~  "cluster 1",
+    Haplotype == "cluster 2" ~  "cluster 2",
+    Haplotype == "cluster 3" ~  "cluster 3",
+    Haplotype == "cluster 4" ~  "cluster 4",
+    Haplotype == "cluster 5" ~  "cluster 1a",
+    Haplotype == "cluster 6" ~  "G-FC2",
+    Haplotype == "cluster 7" ~  "cluster 5",
+    Haplotype == "cluster 8" ~  "cluster 6",
+    Haplotype == "cluster 9" ~  "cluster 7",
+    Haplotype == "cluster 10" ~  "cluster 8",
+    Haplotype == "cluster 11" ~  "cluster 9",
+    Haplotype == "cluster 12" ~  "cluster 10",
+    Haplotype == "cluster 13" ~  "cluster 11",
+    Haplotype == "genome 01" ~  "G-01",
+    Haplotype == "genome 1" ~  "G-1",
+    Haplotype == "genome 2" ~  "G-2",
+    TRUE ~ Haplotype)) %>% 
+  group_by(Tissue, Haplotype, Background) %>% 
+  summarize(AF.mean = mean(AF, na.rm = TRUE), 
+            SD = sd(AF, na.rm = TRUE),
+            N = n()) %>% 
+  mutate(SE = SD / sqrt(N),
+         Lower.CI = qt(1 - (0.05 / 2), N - 1) * SE,
+         Upper.CI = qt(1 - (0.05 / 2), N - 1) * SE) %>% 
+  rename("AF" = AF.mean)
+
+
+
+expanded.df %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  # Rename to the paper scheme
+  mutate(Haplotype = case_when(
+    Haplotype == "cluster 1" ~  "cluster 1",
+    Haplotype == "cluster 2" ~  "cluster 2",
+    Haplotype == "cluster 3" ~  "cluster 3",
+    Haplotype == "cluster 4" ~  "cluster 4",
+    Haplotype == "cluster 5" ~  "cluster 1a",
+    Haplotype == "cluster 6" ~  "G-FC2",
+    Haplotype == "cluster 7" ~  "cluster 5",
+    Haplotype == "cluster 8" ~  "cluster 6",
+    Haplotype == "cluster 9" ~  "cluster 7",
+    Haplotype == "cluster 10" ~  "cluster 8",
+    Haplotype == "cluster 11" ~  "cluster 9",
+    Haplotype == "cluster 12" ~  "cluster 10",
+    Haplotype == "cluster 13" ~  "cluster 11",
+    Haplotype == "genome 01" ~  "G-01",
+    Haplotype == "genome 1" ~  "G-1",
+    Haplotype == "genome 2" ~  "G-2",
+    TRUE ~ Haplotype)) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF)) +
+      geom_ribbon(data = haplotype.mean.frequency, aes(x=factor(Tissue, levels = tissue.order), ymin=AF-SD, ymax=AF+SD, group = Haplotype, fill = Haplotype), alpha=.75, colour = NA) +
+      geom_line(aes(group = SNP)) + 
+      facet_wrap(~factor(Haplotype, levels = full.haplotype.order)) + 
+      scale_fill_manual(values = haplotype.colors) +
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      theme_bw(20) +
+      theme(strip.text.x = element_text(size = 12)) +
+      theme(axis.title.x=element_blank()) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(legend.position="bottom")
+
+ggsave(paste(figure.dir, "extended-data-figure-9.png", sep=""), width = 20, height = 15)
+
+```
+
+Finally, we can save a table with the mutations in these haplotyes to include in the manuscript. 
+
+```{r Save the final haplotypes, echo=T}
+
+expanded.df %>% 
+  filter(!Haplotype %in% c("subclonal", "both")) %>% 
+  # Rename to the paper scheme
+  mutate(Haplotype = case_when(
+    Haplotype == "cluster 1" ~  "cluster 1",
+    Haplotype == "cluster 2" ~  "cluster 2",
+    Haplotype == "cluster 3" ~  "cluster 3",
+    Haplotype == "cluster 4" ~  "cluster 4",
+    Haplotype == "cluster 5" ~  "cluster 1a",
+    Haplotype == "cluster 6" ~  "Genome-FC2",
+    Haplotype == "cluster 7" ~  "cluster 5",
+    Haplotype == "cluster 8" ~  "cluster 6",
+    Haplotype == "cluster 9" ~  "cluster 7",
+    Haplotype == "cluster 10" ~  "cluster 8",
+    Haplotype == "cluster 11" ~  "cluster 9",
+    Haplotype == "cluster 12" ~  "cluster 10",
+    Haplotype == "cluster 13" ~  "cluster 11",
+    Haplotype == "genome 01" ~  "Genome-01",
+    Haplotype == "genome 1" ~  "Genome-1",
+    Haplotype == "genome 2" ~  "Genome-2",
+    TRUE ~ Haplotype)) %>% 
+  # Rename the backgrounds to be consistent with the Haplotypes
+  mutate(Background = case_when(
+    Background == "genome-1" ~  "Genome-1",
+    Background == "genome-2" ~  "Genome-2",
+    TRUE ~ Background)) %>% 
+  mutate(
+    Reference = str_extract(SNP, "^[A-Z]"),
+    Position = as.numeric(str_extract(SNP, "\\d+")),
+    Variant = str_extract(SNP, "[A-Z]$")
+  ) %>% 
+  select(!c(DP, POS, SNP)) %>%
+  rename(`Allele Frequency` = "AF") 
+
+
+```
 

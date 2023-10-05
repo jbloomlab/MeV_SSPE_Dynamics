@@ -482,6 +482,20 @@ ggsave(paste(figure.dir, "extended-data-figure-7.png"), width = 6, height = 4, d
 
 ```
 
+What's the average frequency of F-Gln527*?
+
+```{r}
+labeled.df %>% 
+  select(SNP, Tissue, AF, POS) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !c(SNP, POS), names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(labeled.df, c("SNP", "Tissue", "DP", "AA_Change", "Gene_Name")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP")  %>% 
+  filter(AA_Change %in% c("Gln527*")) %>% 
+  pull(AF) %>% 
+  mean()
+```
 
 
 

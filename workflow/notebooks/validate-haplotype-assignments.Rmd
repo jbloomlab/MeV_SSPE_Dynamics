@@ -595,9 +595,49 @@ expanded.df %>%
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
       theme(legend.position="bottom")
 
+ggsave(paste(figure.dir, "extended-data-figure-9.png", sep=""), width = 19, height = 10)
+
+```
+
+```{r Ext Figure 9, message=F, warning=F, fig.align='center', fig.width=19, fig.height=10, echo=F}
+
+# Get the haplotype names
+haplotypes.label = labeled.df %>% 
+  select(SNP, Haplotype, Background) %>% 
+  distinct()
+
+# Expand the mutations to have a frequency for every tissue.
+expanded.df = labeled.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(labeled.df, c("SNP", "Tissue", "DP")), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+expanded.df %>% 
+    filter(!Haplotype %in% c("fixed", "both", "subclonal")) %>% 
+    mutate(Genotype = case_when(
+      Background == "genome-1" ~ "G1",
+      Background == "genome-2" ~ "G2"
+    )) %>% 
+    ggplot(aes(x = factor(Tissue, levels = tissue.order), y = AF, col = (Genotype))) +
+      geom_line(aes(group = SNP)) +
+      facet_wrap(~factor(Haplotype, levels = haplotype.order)) + 
+      scale_color_manual(values=c("#424ef5", "#cf1919")) + 
+      xlab("Tissue") + 
+      ylab("Allele Frequency") +
+      labs(fill="Genotype", col = "Genotype") +
+      theme_bw(20) +
+      theme(strip.text.x = element_text(size = 12)) +
+      theme(axis.title.x=element_blank()) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+      theme(legend.position="bottom")
+
 ggsave(paste(figure.dir, "final-cluster-structures.png", sep=""), width = 19, height = 10)
 
 ```
+
 
 ## Mutation distribution
 

@@ -168,6 +168,7 @@ rule filter_spruce_trees:
     params: 
         incsv=join(config['variant_dir'], "validated_variants.csv"),
         final_tree=join(config['phylogeny_dir'], "filtered_spruce_tree.csv"),
+        rawvariants=join(config['variant_dir'], "variants.csv"),
         figures=join(config['figure_dir'])
     conda: "../envs/r.yml"
     script: "../notebooks/filter-spruce-trees.Rmd"
