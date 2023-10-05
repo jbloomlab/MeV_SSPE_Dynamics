@@ -13,7 +13,7 @@ rule split_bam:
         bai = join(config['split_dir'], "{accession}", "{accession}.{direction}.sorted.bam.bai"),
         tmp_bam = temp(join(config['split_dir'], "{accession}", "{accession}.{direction}.tmp.sorted.bam"))
     params:
-        flag = lambda wildcards: "99,147" if wildcards.direction == "fwd" else "163,83"
+        flag = lambda wildcards: "99,147" if wildcards.direction == "Negative" else "163,83"
     threads: config['threads']['max_cpu']
     conda: '../envs/align.yml'
     shell:
@@ -53,7 +53,7 @@ rule merge_split_depth:
     Merge the samtools depth tables for all of the accessions into a single file.
     """
     input: 
-        expand(join(config['split_dir'], "{accession}", "{accession}.{direction}.depth"), accession=samples, direction=['fwd', 'rev']),
+        expand(join(config['split_dir'], "{accession}", "{accession}.{direction}.depth"), accession=samples, direction=['Negative', 'Positive']),
     output: 
         depth = join(config['split_dir'], "merged.split.depth"),
         header = temp(join(config['split_dir'], "merged.split.depth.tmp")),
@@ -207,7 +207,7 @@ rule aggregate_split_read_variants:
     """
     This rule aggregates all of the variants. 
     """
-    input: expand([join(config['split_dir'], "{accession}", "{accession}.{direction}.{caller}.ann.csv")], accession=samples, caller=['lofreq', 'varscan'], direction = ['fwd', 'rev'])
+    input: expand([join(config['split_dir'], "{accession}", "{accession}.{direction}.{caller}.ann.csv")], accession=samples, caller=['lofreq', 'varscan'], direction = ['Positive', 'Negative'])
     output: join(config['split_dir'], "split_read_variants.csv")
     run: aggregate_csv(input, output)
 

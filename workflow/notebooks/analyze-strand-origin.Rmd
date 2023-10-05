@@ -27,7 +27,7 @@ knitr::opts_chunk$set(echo = FALSE)
 ## ==== Install Required Packages ==== ##
 
 ## List of all packages needed
-packages = c("tidyverse", "data.table")
+packages = c("tidyverse", "data.table",'RColorBrewer', 'scatterpie')
 
 ## Packages loading
 invisible(lapply(c(packages), library, character.only = TRUE))
@@ -98,10 +98,8 @@ if (!file.exists(figure.dir)) {
 
 ## Read Coverage by Strand
 
-First, I'll investigate how read coverage differs by the strand of origin. Reads where split into two different `BAM` files by the following bit wise flags: 
-  1. Forward Strand: 99
-  2. Reverse Strand: 147
-  
+First, I'll investigate how read coverage differs by the strand of origin. 
+
 Then the coverage was determined using `samtools depth`:
 
 ```
@@ -133,18 +131,39 @@ F. = annotations.df %>% dplyr::filter(Locus == "F")
 H = annotations.df %>% dplyr::filter(Locus == "H")
 L = annotations.df %>% dplyr::filter(Locus == "L")
 
+tissue.order = c(
+  "Parietal Lobe",
+  "Frontal Cortex 1",
+  "Frontal Cortex 2",
+  "Frontal Cortex 3",
+  "Occipital Lobe",
+  "Temporal Lobe",
+  "Hippocampus",
+  "Internal Capsule",
+  "Upper Brain Stem",
+  "Midbrain",
+  "Brain Stem",
+  "Cerebellum Nucleus",
+  "Cerebellum"
+)
+
+
+direction.color = c("#B63F3E", "#307EC2")
+names(direction.color) = c("rev", "fwd")
+
 ```
 
-```{r Plot Coverage Data, echo=TRUE, warning=FALSE, fig.align='center', fig.height=15, fig.width=8}
+```{r Plot Coverage Data, echo=TRUE, warning=FALSE, fig.align='center', fig.height=12, fig.width=13}
 
 split.coverage.df %>% 
   mutate(Tissue = if_else(Tissue == "UBS", "Upper Brain Stem", Tissue)) %>% 
   filter(!Tissue %in% c("SSPE 1", "SSPE 2")) %>% 
+  mutate(Tissue = factor(Tissue, levels = tissue.order)) %>% 
   ggplot(aes(x = POS, y = DP, col = Direction)) + 
     geom_line() + 
-    facet_wrap(~Tissue, ncol = 2) + 
+    facet_wrap(~Tissue, ncol = 3) + 
     scale_y_log10() +
-    scale_color_manual(values = c("#307EC2", "#B63F3E"), labels = c("Positive", "Negative")) +
+    scale_color_manual(values = c("#B63F3E", "#307EC2")) +
     xlab("Position") +
     ylab("Depth") + 
   
@@ -193,9 +212,105 @@ split.coverage.df %>%
     # 5' Start
     annotate(geom = "text", x = (L$Stop + 400), y =  .25, label = "5'", size = 2.5) +
 
-    theme_classic() 
+    theme_classic() +
+    theme(legend.position = "bottom") 
+
+ggsave(paste(figure.dir, "figure-4.png"), width = 13, height = 12, dpi = 300)
 
 ```
+
+```{r Plot Coverage Pie Charts, echo=TRUE, warning=FALSE, fig.align='center', fig.height=6, fig.width=6}
+
+# Calculate the relative coverage ration for positive and negative sense strands. 
+split.coverage.df %>% 
+  group_by(Tissue, Direction) %>% 
+  summarize(Mean = mean(DP)) %>%
+  ungroup() %>% 
+  group_by(Tissue) %>%
+  mutate(Frequency = Mean / sum(Mean)) %>%
+  ungroup() %>% 
+  select(Tissue, Direction, Frequency) %>%
+  mutate(Tissue = if_else(Tissue == "UBS", "Upper Brain Stem", Tissue)) %>% 
+  filter(!Tissue %in% c("SSPE 1", "SSPE 2")) %>% 
+  mutate(Tissue = factor(Tissue, levels = tissue.order)) %>% 
+  ggplot(aes(x = "", y = Frequency, fill = Direction)) + 
+    geom_bar(width = 1, stat = "identity") +
+    scale_fill_manual(values = c("#B63F3E", "#307EC2")) +
+    coord_polar(theta = "y") +
+    facet_wrap(~Tissue) +
+    theme_void() +
+    theme(legend.position = "bottom")
+
+ggsave(paste(figure.dir, "figure-4-pies.png"), width = 6, height = 6, dpi = 300)
+
+```
+
+
+I'll also plot just the coverage for SSPE1 and SSPE2 for Figure 1c
+
+```{r SSPE1 and SSP2 Coverage Data, echo=TRUE, warning=FALSE, fig.align='center', fig.height=4, fig.width=8}
+
+split.coverage.df %>% 
+  filter(Tissue %in% c("SSPE 1")) %>% 
+  ggplot(aes(x = POS, y = DP, col = Direction)) + 
+    geom_line() + 
+    facet_wrap(~Tissue, ncol = 1) + 
+    scale_color_manual(values = c("#B63F3E", "#307EC2")) +
+    xlab("Position") +
+    ylab("Depth") + 
+  
+    # == Annotations of genes == #
+
+    # 3' Start
+    annotate(geom = "text", x = (N$Start - 400), y = -15000/2, label = "3'", size = 3) +
+
+    # Nucleoprotein
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = 0, ymax = -15000 ,
+               alpha = .5, fill = "#d97634", col = "black", size = .1) +
+    annotate(geom = "text", x = (N$Stop + N$Start)/2, y = -15000/2, label = "N", family = "helvetica", size = 3) +
+    annotate("rect", xmin = N$Start-1, xmax = N$Stop, ymin = .5, ymax = 150000 ,
+                   alpha = .05, fill = "#d97634", size = .1) +
+    # P/V/C
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = -15000 ,
+               alpha = .5, fill = "#fcff3d", col = "black", size = .1) +
+    annotate(geom = "text", x = (P.V.C$Stop + P.V.C$Start)/2, y = -15000/2, label = "P/V/C", family = "helvetica", size = 3) +
+    annotate("rect", xmin = P.V.C$Start, xmax = P.V.C$Stop, ymin = 0, ymax = 150000 ,
+               alpha = .05, fill = "#fcff3d", size = .1) +
+    # Matrix protein
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = -15000 ,
+               alpha = .5, fill = "#0db51b", col = "black", size = .1) +
+    annotate(geom = "text", x = (M$Stop + M$Start)/2, y = -15000/2, label = "M", family = "helvetica", size = 3)  +
+    annotate("rect", xmin = M$Start, xmax = M$Stop, ymin = 0, ymax = 150000 ,
+               alpha = .05, fill = "#0db51b", size = .1) +
+    # Fusion protein
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = -15000 ,
+               alpha = .5, fill = "#6A3D9A", col = "black", size = .1) +
+    annotate(geom = "text", x = (F.$Stop + F.$Start)/2, y = -15000/2, label = "F", family = "helvetica", size = 3) +
+    annotate("rect", xmin = F.$Start, xmax = F.$Stop, ymin = 0, ymax = 150000 ,
+               alpha = .05, fill = "#6A3D9A", size = .1) +
+    # Hemagluttinin
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = -15000 ,
+               alpha = .5, fill = "#0251d9", col = "black", size = .1) +
+    annotate(geom = "text", x = (H$Stop + H$Start)/2, y = -15000/2, label = "H", family = "helvetica", size = 3) +
+    annotate("rect", xmin = H$Start, xmax = H$Stop, ymin = 0, ymax = 150000,
+               alpha = .05, fill = "#0251d9", size = .1) +
+    # Large protein
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = -15000 ,
+               alpha = .5, fill = "#bf1515", col = "black", size = .1) +
+    annotate(geom = "text", x = (L$Stop + L$Start)/2, y = -15000/2, label = "L", family = "helvetica", size = 3) +
+    annotate("rect", xmin = L$Start, xmax = L$Stop, ymin = 0, ymax = 150000 ,
+               alpha = .05, fill = "#bf1515", size = .1) +
+
+    # 5' Start
+    annotate(geom = "text", x = (L$Stop + 400), y =  -15000/2, label = "5'", size = 3) +
+
+    theme_classic()  +
+    theme(legend.position = "bottom") 
+
+ggsave(paste(figure.dir, "figure-1c.png"), width = 8, height = 6, dpi = 300)
+
+```
+
 
 ## Does strand origin change allele frequency? 
 
@@ -218,7 +333,7 @@ split.variants.df = read_csv(split.variant.data, show_col_types = F) %>%
   # drop the columns we don't need
   select(!c(Virus, Host, R1, R2, Sample)) %>% 
   # rename the directions to positive and negative
-  mutate(Direction = if_else(Direction == "fwd", "positive", "negative"),
+  mutate(
          SNP = paste0(REF, POS, ALT),
          ID = paste(Accession, SNP, sep = "-")) %>% 
   # filter to get the set of validated variants 
@@ -239,7 +354,7 @@ no.filter.pivot.df = split.variants.df %>%
   ) 
 
 no.filter.pivot.df %>% 
-  ggplot(aes(x = AF_positive, y = AF_negative)) + 
+  ggplot(aes(x = AF_Positive, y = AF_Negative)) + 
     geom_point() + 
     geom_smooth(method = "lm", se = FALSE, color = "blue") +
     xlab("(+) Sense RNA") + 
@@ -247,9 +362,11 @@ no.filter.pivot.df %>%
     theme_bw(14) +
     # Compute and add the Pearson correlation coefficient as an annotation
     annotate("text", x = 0.5, y = 1, 
-             label = sprintf("R = %.2f", cor(no.filter.pivot.df$AF_positive, no.filter.pivot.df$AF_negative, method = "pearson")),
+             label = sprintf("R = %.2f", cor(no.filter.pivot.df$AF_Positive, no.filter.pivot.df$AF_Negative, method = "pearson")),
              hjust = 1.1, vjust = 2) +
     coord_fixed(ratio = 1)
+
+ggsave(paste(figure.dir, "sense-antisense-corr.png"), width = 5, height = 5, dpi = 300)
 
 ```
 
@@ -258,7 +375,7 @@ Let's see how the contribution from each tissue plays into this:
 ```{r Comparison By Tissue, fig.align='center', fig.width=15, fig.height=15}
 
 no.filter.pivot.df %>% 
-  ggplot(aes(x = AF_positive, y = AF_negative)) + 
+  ggplot(aes(x = AF_Positive, y = AF_Negative)) + 
     geom_point() + 
     geom_smooth(method = "lm", se = FALSE, color = "blue") +
     facet_wrap(~Tissue) +
@@ -267,9 +384,10 @@ no.filter.pivot.df %>%
     theme_bw(14) +
     # Compute and add the Pearson correlation coefficient as an annotation
     annotate("text", x = 0.5, y = 1, 
-             label = sprintf("R = %.2f", cor(no.filter.pivot.df$AF_positive, no.filter.pivot.df$AF_negative, method = "pearson")),
+             label = sprintf("R = %.2f", cor(no.filter.pivot.df$AF_Positive, no.filter.pivot.df$AF_Negative, method = "pearson")),
              hjust = 1.1, vjust = 2) 
 
+ggsave(paste(figure.dir, "sense-antisense-corr-all-tissues.png"), width = 15, height = 15, dpi = 300)
 
 ```
 
@@ -297,7 +415,7 @@ depth.filter.pivot.df = split.variants.df %>%
   ) 
 
 depth.filter.pivot.df %>% 
-  ggplot(aes(x = AF_positive, y = AF_negative)) + 
+  ggplot(aes(x = AF_Positive, y = AF_Negative)) + 
     geom_point() + 
     geom_smooth(method = "lm", se = FALSE, color = "blue") +
     xlab("(+) Sense RNA") + 
@@ -305,12 +423,15 @@ depth.filter.pivot.df %>%
     theme_bw(14)  +
     # Compute and add the Pearson correlation coefficient as an annotation
     annotate("text", x = 0.5, y = 1, 
-             label = sprintf("R = %.2f", cor(depth.filter.pivot.df$AF_positive, depth.filter.pivot.df$AF_negative, method = "pearson")),
+             label = sprintf("R = %.2f", cor(depth.filter.pivot.df$AF_Positive, depth.filter.pivot.df$AF_Negative, method = "pearson")),
              hjust = 1.1, vjust = 2) +
     coord_fixed(ratio = 1)
 
 
+ggsave(paste(figure.dir, "sense-antisense-corr-depth-filtered.png"), width = 5, height = 5, dpi = 300)
+
 ```
 
 It's clear that when we increase the filter on the number of observations, the correlation improves (although it was already quite good). This means that any difference between strands is due to sampling and not a biological difference. 
+
 
