@@ -29,7 +29,7 @@ samples = list(set(SAMPLE_DF['Run']))
 
 rule all:
     input: 
-        join(config['notebook_dir'], "analyze-strand-origin.html"),
+        join(config['notebook_dir'], "clique-snv-analysis.html"),
         join(config['coverage_dir'], "merged.stats")
       
 rule clean:

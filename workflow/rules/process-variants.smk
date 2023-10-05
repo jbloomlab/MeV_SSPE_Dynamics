@@ -77,7 +77,6 @@ rule assign_haplotype_backgrounds:
     In this notebook I determine the background of subclonal haplotypes.
     """
     input:
-        join(config['bridging_dir'], "genotyped.csv"),
         join(config['bridging_dir'], "bridging_reads.csv"),
         join(config['notebook_dir'], "phase-subclonal-mutations.html")
     output:
@@ -265,3 +264,20 @@ rule analyze_strand_origin:
         figures=join(config['figure_dir'])    
     conda: "../envs/r.yml"
     script: "../notebooks/analyze-strand-origin.Rmd"
+
+
+rule clique_snv_analysis:
+    """
+    The goal of this notebook is to see if G1/G1, G2/G2, and G1/G2 SNV pairs
+    are linked for forbidden.
+    """
+    input: 
+        join(config['notebook_dir'], "analyze-strand-origin.html"),
+        join(config['bridging_dir'], "bridging_reads.csv")
+    output: 
+        join(config['notebook_dir'], "clique-snv-analysis.html")
+    params: 
+        incsv=join(config['variant_dir'], "clustered_variants.csv"),
+        figures=join(config['figure_dir'])    
+    conda: "../envs/r.yml"
+    script: "../notebooks/clique-snv-analysis.Rmd"

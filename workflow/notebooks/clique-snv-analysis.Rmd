@@ -1,0 +1,259 @@
+---
+title: "13. CliqueSNV Linkage Analysis"
+author:
+    - "Will Hannon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+The goal of this notebook is to adopt the statistical approach derived from a part of the [`CliqueSNV`](https://academic.oup.com/nar/article/49/17/e102/6313236) algorithm. It's used to determine if SNPs are 'linked' or 'forbidden' from counts of reads overlapping both SNPs. We'll use this approach to determine if the reads in G1 and G2 are linked. 
+
+```{r Setup, include=FALSE}
+require("knitr")
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r Required Packages, message=FALSE, warning=FALSE, echo=FALSE}
+
+## ==== Install Required Packages ==== ##
+
+## List of all packages needed
+packages = c("tidyverse", "foreach", "emdbook")
+
+## Packages loading
+invisible(lapply(c(packages), library, character.only = TRUE))
+
+```
+
+```{r Inputs, echo=T}
+
+## ==== File paths input data ==== ##
+
+if (exists("snakemake")) {
+  
+  # Phased variants with haplotype annotations
+  updated.data = snakemake@params[["incsv"]]
+  
+  # Counts of all reads bridging *all* pairs of SNP positions
+  bridging.reads.data = snakemake@input[[1]]
+
+} else {
+  
+  # Phased variants with haplotype annotations
+  updated.data = "../../results/variants/clustered_variants.csv"
+
+  # Counts of all reads bridging *all* pairs of SNP positions
+  bridging.reads.data = "../../results/bridging/bridging_reads.csv"
+
+}
+
+```
+
+```{r Outputs, echo=F}
+
+## ==== File paths output data ==== ##
+
+# Path to save the results
+if (exists("snakemake")) {
+  
+  # G1 and G2 assigned variants
+  output.path = snakemake@params[['outcsv']]
+
+  # Path to save figures
+  figure.dir = paste0(snakemake@params[['figures']], "/")
+  
+} else {
+  
+  # G1 and G2 assigned variants
+  output.path = "../../results/variants/assigned_variants.csv"
+
+  # Path to save figures
+  figure.dir = "../../results/figures/"
+  
+}
+
+# Make the figure directory if it doesn't exist
+if (!file.exists(figure.dir)) {
+  dir.create(figure.dir, recursive = TRUE)
+  print("Directory created.")
+} else {
+  print("Directory already exists.")
+}
+
+```
+
+```{r Import and Format Data, message=F, echo=T}
+
+# Import the SNPs that were phased in the previous notebook 
+updated.df = read_csv(updated.data, show_col_types = FALSE)
+
+# Get the haplotype names for each SNP
+haplotypes.label = updated.df %>% 
+  select(Haplotype, SNP) %>% 
+  distinct()
+
+# Expand the haplotyped SNPs to have records for all tissues
+expanded.df = updated.df %>% 
+  select(SNP, Tissue, AF) %>% 
+  pivot_wider(names_from = "Tissue", values_from = "AF", values_fill = 0) %>% 
+  pivot_longer(cols = !SNP, names_to = "Tissue", values_to = "AF") %>% 
+  left_join(., select(updated.df, c("SNP", "Tissue", "DP",)), by = c("SNP", "Tissue")) %>% 
+  mutate(DP = if_else(is.na(DP), 0, DP)) %>% 
+  left_join(., distinct(select(updated.df, c("SNP", "POS"))), by = c("SNP")) %>% 
+  left_join(., haplotypes.label, by = "SNP") 
+
+# Calculate the mean haplotype frequency across each tissue
+haplotype.mean = expanded.df %>% 
+  group_by(Tissue, Haplotype) %>% 
+  summarize(AF = mean(AF))
+
+# Import the reads that bridge all pairs of SNPs for the multinomial approach
+bridging.df = read_csv(bridging.reads.data, show_col_types = FALSE)
+
+```
+
+First, we'll take all of the bridging reads and get just those that have `genome-1` and `genome-2` identity. Then, we'll use the following formulas to calculate if SNPs are:
+
+  **(1) Linked?**
+$$
+\begin{align*}
+Pr(x \ge O_{22} | T_{22} \le t) &= 1- Pr(x < O_{22} | T_{22} \le t) \\
+&\le 1- \sum _{i=0}^{O_{22}-1} \binom{n}{i} t^i(1-t)^{n-i} \\
+&\le \frac{0.05}{\binom{L}{2}}
+\end{align*}
+$$
+
+  **(2) Forbidden?**
+$$
+\begin{align*}
+Pr(x\le O_{22} | T_{22} \ge t) &\le \sum _{i=0}^{O_{22}} \binom{n}{i} t^i(1-t)^{n-i} \\
+&\le \frac{0.05}{\binom{L}{2}}
+\end{align*}
+$$
+
+```{r Calculate Linkage, warning=F, message=F, echo = T}
+
+# Cutoff for minimum total number of bridging reads covering two sites
+min.total = 10
+
+# Minimum significance for the statistical test  
+min.sig = 0.05
+  
+# Frequency of AB haplotypes expected by chance
+tau = 0.05
+
+# Get the names of the haplotypes for each position
+haplotype.labels = updated.df %>% 
+  select(POS, Haplotype) %>% 
+  distinct()
+
+g1.g2.linkage.df = bridging.df %>% 
+  group_by(snp_1, snp_2) %>%
+  summarise(
+    `00`= sum(`00`),
+    `10` = sum(`10`),
+    `01` = sum(`01`),
+    `11` = sum(`11`)) %>% 
+  ungroup() %>% 
+  # Add back the snp 1 haplotype label
+  left_join(., dplyr::rename(haplotype.labels, snp_1 = POS, hap_1 = Haplotype)) %>% 
+  # Add back the snp 2 haplotype label
+  left_join(., dplyr::rename(haplotype.labels, snp_2 = POS, hap_2 = Haplotype)) %>% 
+  # We want cases with only genome 1 or genome 2
+  filter(hap_1 %in% c("genome-1", "genome-2") & hap_2 %in% c("genome-1", "genome-2")) %>% 
+  # Sum to get total
+  mutate(total = `00` + `10` + `01` + `11`) %>% 
+  # Filter based on the minimum value for total
+  filter(total >= min.total) %>% 
+  # Calculate linkage for all pairs
+  mutate(pr_linked = pbinom( (`11` - 1), total, tau, lower.tail = FALSE), 
+         linked = pr_linked <= min.sig/n(),
+         n = n()) %>% 
+  # Calculate linkage for all pairs
+  mutate(pr_forbidden = pbinom( (`11`), total, tau, lower.tail = TRUE), 
+         forbidden = pr_forbidden <= min.sig/n(),
+         n = n()) %>% 
+  # Pivot on the comparisons 
+  mutate(haplotype = case_when(
+    (hap_1 == "genome-1" & hap_2 == "genome-1") ~ "G1",
+    (hap_1 == "genome-2" & hap_2 == "genome-2") ~ "G2",
+    (hap_1 == "genome-1" & hap_2 == "genome-2") ~ "G1/G2",
+    (hap_1 == "genome-2" & hap_2 == "genome-1") ~ "G1/G2"
+  )) %>% 
+  mutate(snp_pair = paste(pmin(snp_1, snp_2), pmax(snp_1, snp_2), sep = "-"))
+
+
+```
+
+Finally, we'll plot the proportion of SNV pairs that are linked for forbidden for G1/G1, G1/G2, and G2/G2 pairs. 
+
+```{r Plot Linkage, fig.align='center', fig.width=6, fig.height=4, echo=F}
+
+snp.counts = g1.g2.linkage.df %>% 
+  select(snp_pair, haplotype) %>% 
+  unique() %>% 
+  group_by(haplotype) %>% 
+  count() %>% 
+  mutate(n = paste(n, "SNV pairs", sep = " ")) %>% 
+  ungroup() %>% 
+  mutate(haplotype = case_when(
+    haplotype == "G1" ~ "G1 and G1",
+    haplotype == "G2" ~ "G2 and G2",
+    haplotype == "G1/G2" ~ "G1 and G2",
+  )) 
+
+
+g1.g2.linkage.df %>% 
+  select(haplotype, snp_pair, forbidden, linked) %>% 
+  group_by(haplotype) %>% 
+  summarise(
+    forbidden_True = sum(forbidden, na.rm = TRUE),
+    forbidden_False = sum(!forbidden, na.rm = TRUE),
+    linked_True = sum(linked, na.rm = TRUE),
+    linked_False = sum(!linked, na.rm = TRUE)
+    ) %>% 
+  pivot_longer(
+    cols = -haplotype, 
+    names_to = c("variable", "value"),
+    names_pattern = "(.*)_(.*)", 
+    values_to = "count"
+  ) %>% 
+  group_by(haplotype, variable) %>% 
+  mutate(proportion = count / sum(count)) %>% 
+  mutate(haplotype = case_when(
+    haplotype == "G1" ~ "G1 and G1",
+    haplotype == "G2" ~ "G2 and G2",
+    haplotype == "G1/G2" ~ "G1 and G2",
+  )) %>% 
+  mutate(value = case_when(
+    value == "True" ~ "Significant evidence",
+    value == "False" ~ "Insufficient evidence",
+  )) %>%
+  ggplot(aes(x = variable , y = proportion)) + 
+    geom_bar(aes(fill = value), stat = "identity") + 
+    geom_text(data = snp.counts, aes(x = 1.5, y = 1.05, label = n)) + 
+    scale_fill_manual(values = c("grey", "#2aad40")) + 
+    facet_wrap(~haplotype) + 
+    ylab("Proportion of SNVs") + 
+    xlab("") +
+    labs(fill = "") + 
+    theme_bw() +
+    theme(legend.position = "bottom")
+
+ggsave(paste(figure.dir, "reviewer-response-cliqueSNV.png"), width = 6, height = 4, dpi = 300)
+
+```
+
+
+
+
+

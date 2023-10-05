@@ -48,3 +48,9 @@ I numbered the notebooks based on their order in the analysis. Although order is
 
 11. `cluster-tissues-spatially.Rmd`
     > The goal of this notebook is to take an unbiased approach to show how similar tissue compartments have similar viral populations. In this notebook, I use PCA on the frequency of SNVs in each tissue.
+
+12. `analyze-strand-origin.Rmd`
+   > The goal of this notebook is to see if SNVs called on reads from either positive sense or negative sense strands are different. Also, this notebook contains plots of the coverage of reads from positive and negative stand RNA. 
+
+13. `clique-snv-analysis.Rmd`
+   > The goal of this notebook is to adopt an approach from CliqueSNV to see if G1/G1, G2/G2, and G1/G2 SNV pairs are linked or forbidden. 
