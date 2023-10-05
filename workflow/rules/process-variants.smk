@@ -274,11 +274,11 @@ rule clique_snv_analysis:
     """
     input: 
         join(config['notebook_dir'], "analyze-strand-origin.html"),
-        join(config['bridging_dir'], "bridging_reads.csv")
     output: 
         join(config['notebook_dir'], "clique-snv-analysis.html")
     params: 
-        incsv=join(config['variant_dir'], "clustered_variants.csv"),
+        incsv=join(config['variant_dir'], "clustered_variants.csv"),       
+        bridging=join(config['bridging_dir'], "bridging_reads.csv"), 
         figures=join(config['figure_dir'])    
     conda: "../envs/r.yml"
     script: "../notebooks/clique-snv-analysis.Rmd"

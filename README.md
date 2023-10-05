@@ -1,58 +1,45 @@
-# Spatial analysis of measles virus brain spread reveals how a genome collective drove a lethal human disease
+# Acquiring brain tropism: the spatial dynamics and evolution of a measles virus collective infectious unit that drove lethal subacute sclerosing panencephalitis 
 
 Iris Yousaf, William W. Hannon, Ryan C. Donohue, Christian K. Pfaller, Kalpana Yadav, Ryan J. Dikdan, Sanjay Tyagi, Declan C. Schroeder, Wun-Ju Shieh, Paul A. Rota, Alison F. Feder, Roberto Cattaneo
 
-Rarely, measles virus (MeV) causes lethal subacute sclerosing panencephalitis (SSPE). The evolutionary processes favoring the emergence of MeV mutants capable of brain spread are incompletely understood. Surprisingly, we identified not one, but two distinct MeV genome subpopulations present at variable frequencies in each of autopsy specimens isolated from spatially distinct regions of the brain of an individual who succumbed to SSPE. Most infected cells carried both genome types, which formed separate replication centers. Based on mutation frequency analyses, we identified the frontal cortex as the probable site of emergence of the two subpopulations. In this location, the MeV genome collective acquired three mutations resembling those implicated in lethal brain spread in other SSPE cases. As the genome collective moved across brain regions and diversified, mutations affecting the cytoplasmic tails of both viral envelope proteins emerged and fluctuated, suggesting convergent evolution for modulation of fusogenicity. Our analyses provide a prime example of “en bloc” spread of a collective infectious unit within a human host.
+It is increasingly appreciated that pathogens can spread as infectious units constituted by multiple, genetically diverse genomes, also called collective infectious units or genome collectives. However, genetic characterization of the spatial dynamics of collective infectious units in animal hosts is demanding, and it is rarely feasible in humans. Measles virus (MeV), whose spread in lymphatic tissues and airway epithelia relies on collective infectious units, can, in rare cases, cause subacute sclerosing panencephalitis (SSPE), a lethal human brain disease. In different SSPE cases, MeV acquisition of brain tropism has been attributed to mutations affecting either the fusion or the matrix protein, or both, but the overarching mechanism driving brain adaptation is not understood. Here we analyzed MeV RNA from several spatially distinct brain regions of an individual who succumbed to SSPE. Surprisingly, we identified two major MeV genome subpopulations present at variable frequencies in all 15 brain specimens examined. Both genome types accumulated mutations like those shown to favor receptor-independent cell-cell spread in other SSPE cases. Most infected cells carried both genome types, suggesting the possibility of genetic complementation. We cannot definitively chart the history of spread of this virus in the brain, but several observations suggest that mutant genomes generated in the frontal cortex moved outwards as a collective and diversified. During diversification, mutations affecting the cytoplasmic tails of both viral envelope proteins emerged and fluctuated in frequency across genetic backgrounds, suggesting convergent and potentially frequency-dependent evolution for modulation of fusogenicity. We propose that a collective infectious unit drove MeV pathogenesis in this brain. Re-examination of published data suggests that similar processes may have occurred in other SSPE cases. Our studies provide a primer for analyses of the evolution of collective infectious units of other pathogens that cause lethal disease in humans. 
 
-_A link to the full paper can be found [here]()._
+## Snakemake Pipeline
 
-## Methods
+This project was a collaboration between the [Cattaneo Lab](https://www.mayo.edu/research/faculty/cattaneo-roberto-ph-d/bio-00027692), [Bloom Lab](https://research.fredhutch.org/bloom/en.html), and [Feder Lab](https://federlab.github.io/).
 
-### Sequencing Read Processing
+This repository contains the Snakemake pipeline that runs the analysis for the study "Acquiring brain tropism: the spatial dynamics and evolution of a measles virus collective infectious unit that drove lethal subacute sclerosing panencephalitis". 
 
-Processing of the raw Illumina sequencing reads from all 15 tissue specimens for variant calling and haplotyping was performed using a Snakemake pipeline that is available [here](workflow/Snakefile) on GitHub. First, the unaligned FASTQ files were trimmed of adaptor sequences using the program fastp (version 0.22.0). In addition to adaptor trimming, fastp was used to remove reads with an abundance of low quality bases (> 40% of bases with a phred score < 15). Following quality control, viral reads were extracted from the unaligned FASTQ files by matching 31-base long kmers to the composite MeV reference sequence described above using the program BBduk (version 39.01). After filtering and quality control, the MeV reads were aligned to the composite reference sequence described above using BWA mem (version 0.7.17).
+The pipeline can be run by cloning the repository: 
 
-Following alignment, a [custom python script](workflow/scripts/make-sspe-reference.py) was used to make a patient-specific MeV reference genome by incorporating fixed viral mutations into the composite reference genome. Briefly, we used the python/samtools interface pysam (version 0.17.0) to count the number of occurrences of each base for every position in the genome. We only counted bases if they had a phred quality score greater than 25. Additionally, we only considered sites with more than 100 reads covering that position. We considered a mutation fixed with respect to the MeV sequences isolated from the patient’s brain if they were present at greater than 90% frequency in 12 or more of the 15 sequenced tissue specimens. These mutations were considered ‘ancestral’ to the MeV sequences observed in the brain and were incorporated into the patient-specific reference. We realigned the processed FASTQ files to this patient-specific reference genome using BWA mem. These aligned BAM files were used in the subsequent variant calling and haplotyping analyses.
+```bash
+git clone git@github.com:jbloomlab/MeV_SSPE_Dynamics.git
+cd MeV_SSPE_Dynamics
+```
 
-### Variant Calling and Filtering
+Setting up the conda environment specified in the `environment.yml` file: 
 
-To identify MeV single nucleotide variants (SNVs) with respect to the patient-specific reference described above, we use two variant calling programs – lofreq (version 2.1.3.1) and varscan (version 2.4.0). Where possible, we used the same heuristic filters in each program. The minimum phred score was 25, the minimum read coverage was 200, at least 10 reads needed to contain a given variant, and the minimum allele frequency was 2%. If filters could not be applied in either program, we standardized these filters post-hoc in R. Insertions and deletions were excluded from our analysis as we did not benchmark our approach to detect these. We annotated the coding effect of each SNV using the program SnpEff (version 5.1).
+```bash
+conda env create -f environment.yml
+conda activate MeV
+```
 
-We then unified the SNVs identified by both lofreq and varscan into a single set of variants for downstream analyses Roughly 89% of variants were identified by both programs. However, some variants were missing from one or the other approach likely due to tool-specific probabilistic or heuristic filters. We leveraged the fact that we had multiple autopsy specimens from the same patient to resolve the SNVs identified by both variant calling approaches in some specimens but missed by a single approach in one or more specimens. This resulted in a set of 535 unique nucleotide mutations in the brain.
+And finally, running the snakemake pipeline: 
 
-### Haplotype Phasing and Processing
+```bash
+snakemake --cores 4
+```
 
-To reconstruct viral haplotypes, we used an approach that leverages the fact that we have multiple autopsy specimens isolated from distinct spatial regions in the brain. We expect that mutations present on the same viral molecule – or haplotype – will be present at similar frequencies in each of the sequenced specimens. We took advantage of this correlation in frequency to cluster SNVs that are on the same viral haplotype.
+or, if you're using the `rhino` computing system at Fred Hutch Cancer Cetner, by submitting the following script to sbatch: 
 
-To do this we first took variants that were identified at greater than 2% frequency in all 15 tissue samples. We computed a correlation matrix on the frequencies of these SNVs using the Pearson method. Most variant frequencies were either strongly positively correlated or strongly negatively correlated. We computed a distance matrix from the Pearson coefficients and used k-medoids clustering to partition the SNVs into putative haplotype clusters.
-
-Following the success of exclusively using SNVs present in every specimen, we extended this analysis to SNVs that were missing from one or more specimens. We partitioned the remaining variants based on their average frequency in each sample. SNVs with higher average allele frequencies are likely to have a larger variance in their frequency across specimens, and therefore true correlations are easier to distinguish from noise. The first bin we used included SNVs present at greater than or equal to 25% allele frequency in at least one specimen. After identifying putative haplotypes using the method described above, we moved on to a second bin comprising variants with frequencies between 5% and 25% in at least one tissue. SNVs that were never identified at greater than 5% frequency in a single specimen could not be clustered with this approach due to the difficulty of distinguishing correlation from noise. The full analysis and a more detailed description of the method can be found in [this notebook](workflow/notebooks/03-phase-subclonal-mutations.Rmd).
-
-### Phylogenetic Analysis
-
-After identifying clusters of SNVs forming putative haplotypes, we used the algorithm SPRUCE as implemented in the software tool MACHINA (https://github.com/raphael-group/machina) to find all phylogenetic trees consistent with the average haplotype frequencies across the specimens. We calculated an inclusive error threshold around each mean haplotype frequency by taking the minimum and maximum frequency of haplotype SNVs in each specimen. There were 36 candidate trees that plausibly described the phylogenetic relationship among haplotype clusters.
-
-To narrow down the space of possible trees, we leveraged reads that bridged segregating loci on pairs of haplotype cluster backgrounds to test whether the co-occurrence of haplotype-specific SNVs supported linkage between the two clusters. We first applied this approach to assign all haplotype clusters to either the G1 or G2 background. Specifically, for each cluster, we identified all SNVs on the focal cluster with reads overlapping either a G1 or G2 SNV. Because G1 and G2 are mutually exclusive, the absence of a G1 allele implies the presence of a G2 allele. For a given SNV on cluster c in a given specimen s, we identified all read counts x11, x10, x01, and x00, where x11 represents the number of reads overlapping the cluster allele and G1, x10 represents the number of reads overlapping the cluster allele and G2, x01 represents the number of reads overlapping the non-cluster allele and G1 and x00 represents the number of reads overlapping the non-cluster allele and G2. If the cluster allele is on G1, the likelihood of observing the distribution of overlapping reads is multinomially distributed:
-
-$$lik(x*11,x_10 ,x_01 〖,x〗\_00 | c on G1 in s) = ((x11 + x10 + x01 + x00)!)/(x11! x10! x01! x00!) 〖〖f_G1,11〗* ^(x*11 )〗^ 〖f_G1,10〗* ^(x*10 ) 〖〖 f〗\_G1,01〗* ^(x*01 ) 〖〖 f〗\_G1,01〗* ^(x_01 )$$
-
-Where $f*G1,11 = (f*(c,s)+ε)/(1 + 4ε)$, $f*G1,10=(f*(G1,s)-f*c + ε)/(1+4ε)$, $f_G1,01 = ε/(1 + 4ε)$, and $f_G1,00=〖1-f〗\_G1,11 〖-f〗\_G1,10 〖-f〗\_G1,01 〖-f〗\_G1,01$, and $f*(G1,s)$ is the frequency of G1 in specimen s and $f\_(c,s)$ is the frequency of cluster c in specimen s. Alternatively, if the cluster allele is on G2, the likelihood of observing the distribution of overlapping reads is given by:
-
-$$lik(x*11,x_10 ,x_01 〖,x〗\_00 | c on G2 in s) = ((x11 + x10 + x01 + x00)!)/(x11! x10! x01! x00!) 〖〖f_G2,11〗* ^(x*11 )〗^ 〖f_G2,10〗* ^(x*10 ) 〖〖 f〗\_G2,01〗*( )^(x*01 ) 〖〖 f〗\_G2,01〗* ^(x_01 )$$
-
-Where $f*G2,11= ε/(1 + 4ε), f_G2,10 = 〖(f〗\_c +ε)/(1 + 4ε)$, $f_G2,01=〖1-f〗\_G2,11 〖-f〗\_G2,0 〖-f〗*(G2,-0)$, and $f*G2,00= (1-f*(G1,s)-f_c +ε)/(1 + 4ε)$. We then assess the weight of evidence for a SNV on cluster c belonging to a G1 or G2 background across the set of all specimens S based on read overlap via AIC:
-
-$$〖AIC〗_G1= -2 ∑_(s ∋ S)^ ▒ log lik(x*11,x_10 ,x_01 〖,x〗\_00 | c on G1 in s)$$
-$$〖AIC〗\_G2= -2 ∑*(s ∋ S)^ ▒ log lik(x_11,x_10 ,x_01 〖,x〗\_00 | c on G2 in s)$$
-
-We can then assign the SNV as supporting assignment of cluster c to G1, G2, or neither via the relative likelihood ratio framework. We tested each SNV on cluster c independently, and assigned a cluster to G1 or G2 if all cluster SNVs supported the assignment. The only cluster unable to be assigned in this way was cluster 14, which had 232 SNV pairs assigned to G1, 5 assigned to G2 and 25 inconclusive. The 30 SNV pairs not supporting G1 assignment were in the highly mutated M region where recurrent mutations are likely, and all 5 SNV pairs supporting G2 were C to T mutations. We therefore assigned cluster 14 to G1.
-
-Using this approach, we were able to filter down the number of plausible trees from 36 trees to only 2 trees. Both trees had identical structures apart from a single prediction that cluster 8 was descended from cluster 2 on one tree but not the other. Using the approach described above with reads that bridged segregating loci on cluster 8 and cluster 2, we were able to show that cluster 8 was not linked to cluster 2 and therefore could not be descended from cluster 2. Thus, we were able to show that this tree was not possible and only a single tree predicted by SPRUCE could plausibly explain the phylogenetic relationship of haplotypes in the brain. The full analysis and a more detailed description of this method can be found in this [notebook](workflow/notebooks/07-filter-spruce-trees.Rmd).
-
-_You can see a graphical represenation of the pipeline implementing these methods [here](dag.pdf)_
+```bash
+sbatch run_analysis.bash
+```
 
 ## Repo Organization
 
-- [`workflow`](workflow/): Contains the code that implements that [Snakemake pipeline](workflow/Snakefile) and the [notebooks](workflow/notebooks/) where the main analysis occurs.
+- [`workflow`](workflow/): Contains the code that implements that [Snakemake pipeline](workflow/Snakefile) and the [notebooks](workflow/notebooks/) where the main analysis happens.
 - [`config`](config/): Contains some of the data needed to run the pipeline, including the [custom MeVChiTok reference genome](config/ref/MeVChiTok.fa), [annotations](config/annotations.csv), and a [list of sequencing runs](config/samples.csv).
-- [`results`](results/): Contains a subset of the results including most importantly the f[iltered variants](results/variants/validated_variants.csv) annotated by their haplotype identity.
+- [`results`](results/): Contains a subset of the results including most importantly the [filtered variants](results/variants/validated_variants.csv) annotated by their haplotype identity.
+
+

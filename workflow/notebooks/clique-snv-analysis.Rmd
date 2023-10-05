@@ -44,7 +44,7 @@ if (exists("snakemake")) {
   updated.data = snakemake@params[["incsv"]]
   
   # Counts of all reads bridging *all* pairs of SNP positions
-  bridging.reads.data = snakemake@input[[1]]
+  bridging.reads.data = snakemake@params[["bridging"]]
 
 } else {
   
@@ -119,6 +119,8 @@ haplotype.mean = expanded.df %>%
 # Import the reads that bridge all pairs of SNPs for the multinomial approach
 bridging.df = read_csv(bridging.reads.data, show_col_types = FALSE)
 
+
+print(bridging.df)
 ```
 
 First, we'll take all of the bridging reads and get just those that have `genome-1` and `genome-2` identity. Then, we'll use the following formulas to calculate if SNPs are:
