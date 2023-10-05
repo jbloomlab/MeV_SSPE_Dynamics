@@ -60,7 +60,7 @@ if (!empty){
   sample.name = sample.info[1]
 
   # If the the second element is either 'fwd' or 'rev', then sample.caller is the third element
-  if (sample.info[2] == "fwd" | sample.info[2] == "rev"){
+  if (sample.info[2] == "Positive" | sample.info[2] == "Negative"){
     sample.direction = sample.info[2]
     sample.caller = sample.info[3]
   } else{
